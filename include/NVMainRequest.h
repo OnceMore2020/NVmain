@@ -129,6 +129,10 @@ class NVMainRequest
         issueCycle = 0; 
         queueCycle = 0;
         bankissueCycle = 0;
+        memreadstartCycle = 0;
+        memreadendCycle = 0;
+        memread_flag = 0;
+        drchit_flag = 0;
         completionCycle = 0; 
         isPrefetch = false; 
         programCounter = 0; 
@@ -154,6 +158,7 @@ class NVMainRequest
     void *reqInfo;                 //< User-defined info for request (frontend only)
     uint64_t flags;                //< Flags for NVMain (backend only)
     bool isPrefetch;               //< Whether request is a prefetch or not
+    uint64_t memread_flag;
     NVMAddress pfTrigger;          //< Address that triggered this prefetch
     uint64_t programCounter;       //< Program counter of CPU issuing request
     ncounter_t burstCount;         //< Number of bursts (used for variable-size requests.
@@ -164,7 +169,10 @@ class NVMainRequest
     ncycle_t issueCycle;           //< When the memory controller issued the request to the interconnect (dequeued)
     ncycle_t completionCycle;      //< When the request was sent back to the requestor
     ncycle_t bankissueCycle;
+    ncycle_t memreadstartCycle;
+    ncycle_t memreadendCycle;
 
+    ncycle_t drchit_flag;
     ncycle_t writeProgress;        //< Number of cycles remaining for write request
     ncycle_t cancellations;        //< Number of times this request was cancelled
 
@@ -203,12 +211,16 @@ const NVMainRequest& NVMainRequest::operator=( const NVMainRequest& m )
     pfTrigger = m.pfTrigger;
     programCounter = m.programCounter;
     owner = m.owner;
+    memread_flag = m.memread_flag;
 
     bankissueCycle = m.bankissueCycle;
     arrivalCycle = m.arrivalCycle;
     queueCycle = m.queueCycle;
     issueCycle = m.issueCycle;
+    memreadstartCycle = m.memreadstartCycle;
+    memreadendCycle = m.memreadendCycle;
     completionCycle = m.completionCycle;
+    drchit_flag = m.drchit_flag;
 
     return *this; 
 }

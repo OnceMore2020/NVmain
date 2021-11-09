@@ -76,6 +76,7 @@ Params::Params( )
     Epdpf = 0.000000;
     Epdps = 0.000000;
     Voltage = 1.5;
+    decdelay = 0;
 
     /* 
      * Default to 30 ohms for read. This means 60 ohms for 
@@ -359,6 +360,7 @@ void Params::SetParams( Config *c )
     ConvertTiming( c, "tXS", tXS );
     ConvertTiming( c, "tXSDLL", tXSDLL );
 
+    c->GetValueUL( "decdelay", decdelay);
     c->GetValueUL( "tRDPDEN", tRDPDEN );
     c->GetValueUL( "tWRPDEN", tWRPDEN );
     c->GetValueUL( "tWRAPDEN", tWRAPDEN );

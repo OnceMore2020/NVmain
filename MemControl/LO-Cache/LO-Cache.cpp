@@ -264,6 +264,7 @@ bool LO_Cache::IssueCommand( NVMainRequest *req )
     }
     else
     {
+        req->arrivalCycle = GetEventQueue()->GetCurrentCycle();
         Enqueue( 0, req );
     }
     
@@ -352,6 +353,7 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
             assert( outstandingFills.count( req ) > 0 );
             NVMainRequest *originalReq = outstandingFills[req];
             outstandingFills.erase( req );
+            originalReq->memreadendCycle = GetEventQueue()->GetCurrentCycle();
 
             GetParent( )->RequestComplete( originalReq );
             rv = false;
@@ -381,6 +383,7 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
             bool dirtyEvict = false;
             NVMAddress victim;
 
+            req->drchit_flag = 1;
             if( functionalCache[rank][bank]->SetFull( req->address )
                 && !functionalCache[rank][bank]->Present( req->address ) )
             {
@@ -390,8 +393,14 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
                 drc_evicts++;
             }
 
+            if (dirtyEvict)
+            {
+                req->drchit_flag = 0;
+            }
+
             (void)functionalCache[rank][bank]->Install( req->address, req->data );
 
+            req->memreadstartCycle = GetEventQueue()->GetCurrentCycle();
             /* Send back to requestor. */
             GetParent( )->RequestComplete( req );
             rv = false;
@@ -430,6 +439,8 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
 
             req->address.GetTranslatedAddress( NULL, NULL, &bank, &rank, NULL, NULL );
 
+            req->memreadstartCycle = GetEventQueue()->GetCurrentCycle();
+
             /* Check for a hit. */
             bool hit = functionalCache[rank][bank]->Present( req->address );
 
@@ -447,6 +458,8 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
 
                 assert( outstandingFills.count( req ) == 0 );
                 outstandingFills.insert( std::pair<NVMainRequest*, NVMainRequest*>( memReq, req ) );
+                req->memread_flag = 1;
+                req->memreadstartCycle = GetEventQueue()->GetCurrentCycle();
 
                 if (mainMemory->IsIssuable( memReq, NULL )) {
                     mainMemory->IssueCommand( memReq );
@@ -458,9 +471,11 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
                 }
 
                 drc_miss++;
+                req->drchit_flag = 0;
             }
             else
             {
+                req->drchit_flag = 1;
                 /* Send back to requestor. */
                 GetParent( )->RequestComplete( req );
                 rv = false;
@@ -521,6 +536,7 @@ void LO_Cache::CalculateStats( )
     if( drc_hits+drc_miss > 0 )
         drc_hitrate = static_cast<float>(drc_hits) / static_cast<float>(drc_miss+drc_hits);
 
+    std::cout << " dirty_evict " << drc_dirty_evicts << " evict " << drc_evicts << " rb_hits " << rb_hits << " rb_miss " << rb_miss << std::endl;
     MemoryController::CalculateStats( );
 }
 

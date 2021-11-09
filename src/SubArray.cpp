@@ -80,6 +80,7 @@ SubArray::SubArray( )
     
     dataCycles = 0;
     worstCaseWrite = 0;
+    decdelay = 0;
 
     subArrayEnergy = 0.0f;
     activeEnergy = 0.0f;
@@ -154,6 +155,7 @@ void SubArray::SetConfig( Config *c, bool createChildren )
     params->SetParams( c );
     SetParams( params );
 
+    decdelay = p->decdelay;
     MATHeight = p->MATHeight;
     /* customize MAT size */
     if( conf->KeyExists( "MATWidth" ) )
@@ -389,7 +391,8 @@ bool SubArray::Read( NVMainRequest *request )
     }
 
     /* Any additional latency for data encoding. */
-    ncycles_t decLat = (dataEncoder ? dataEncoder->Read( request ) : 0);
+    //ncycles_t decLat = (dataEncoder ? dataEncoder->Read( request ) : 0);
+    ncycles_t decLat = decdelay;
 
     /* Update timing constraints */
     if( request->type == READ_PRECHARGE )

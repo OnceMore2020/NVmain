@@ -333,6 +333,27 @@ void EventQueue::Loop( ncycle_t steps )
         return;
     }
 
+    while (steps > 0) {
+        /* No events in this step amount, just change current cycle. */
+        if (nextEventCycle > currentCycle )
+        {
+            return;
+        }
+
+        /* Process will update nextEventCycle for the next loop iteration. */
+        Process();
+    }
+}
+
+void EventQueue::Loop( ncycle_t steps )
+{
+    /* Special case. */
+    if( steps == 0 && nextEventCycle == currentCycle )
+    {
+        // Process();
+        return;
+    }
+
     ncycle_t stepCycles = steps;
 
     while( stepCycles > 0 )
@@ -350,7 +371,7 @@ void EventQueue::Loop( ncycle_t steps )
         stepCycles -= currentSteps;
 
         /* Process will update nextEventCycle for the next loop iteration. */
-        Process( );
+        //Process( );
     }
 }
 
@@ -476,11 +497,13 @@ void GlobalEventQueue::AddSystem( NVMain *subSystem, Config *config )
 void GlobalEventQueue::Cycle( ncycle_t steps )
 {
     EventQueue *nextEventQueue;
+    EventQueue *othernextEventQueue;
     ncycle_t iterationSteps = 0;
 
     while( iterationSteps <= steps )
     {
         ncycle_t nextEvent = GetNextEvent( &nextEventQueue );
+        ncycle_t oteherlocalQueueSteps = 0;
 
         ncycle_t globalQueueSteps = 0;
         if( nextEvent > currentCycle )
@@ -496,7 +519,21 @@ void GlobalEventQueue::Cycle( ncycle_t steps )
             break;
         }
 
+        std::map<EventQueue *, double>::const_iterator iter;
+        for (iter = eventQueues.begin(); iter != eventQueues.end(); iter++) {
+            if (nextEventQueue != iter->first)
+            {
+                othernextEventQueue = iter->first;
+                double frequencyMultiplier = frequency / iter->second;
+                oteherlocalQueueSteps = static_cast<ncycle_t>(static_cast<double>(currentCycle+globalQueueSteps) / frequencyMultiplier) - iter->first->GetCurrentCycle();
+                if (static_cast<ncycle_t>(static_cast<double>(currentCycle+globalQueueSteps) / frequencyMultiplier) >iter->first->GetCurrentCycle())
+                    othernextEventQueue->Loop2(oteherlocalQueueSteps);
+            }
+        }
+
         ncycle_t localQueueSteps = nextEventQueue->GetNextEvent( ) - nextEventQueue->GetCurrentCycle( );
+
+        nextEventQueue->Loop2( localQueueSteps );
         nextEventQueue->Loop( localQueueSteps );
 
         currentCycle += globalQueueSteps;
@@ -562,8 +599,9 @@ void GlobalEventQueue::Sync( )
         double setCycle = static_cast<double>(currentCycle) / frequencyMultiplier;
         ncycle_t stepCount = static_cast<ncycle_t>(setCycle) - iter->first->GetCurrentCycle( );
 
-        if( static_cast<ncycle_t>(setCycle) > iter->first->GetCurrentCycle( ) )
+        if( static_cast<ncycle_t>(setCycle) >= iter->first->GetCurrentCycle( ) )
         {
+            iter->first->Loop2( stepCount );
             iter->first->Loop( stepCount );
         }
     }

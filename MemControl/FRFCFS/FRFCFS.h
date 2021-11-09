@@ -62,9 +62,11 @@ class FRFCFS : public MemoryController
     /* Cached Configuration Variables*/
     uint64_t queueSize;
 
+    doubl cycle_ns;
     /* Stats */
-    uint64_t measuredLatencies, measuredQueueLatencies, measuredTotalLatencies;
+    uint64_t measuredreadLatencies, measuredLatencies, measuredQueueLatencies, measuredTotalLatencies;
     double averageLatency, averageQueueLatency, averageTotalLatency, averageBankLatency;
+    double averagereadLatency, averagereadQueueLatency, averagereadBankLatency;
     uint64_t mem_reads, mem_writes;
     uint64_t rb_hits;
     uint64_t rb_miss;

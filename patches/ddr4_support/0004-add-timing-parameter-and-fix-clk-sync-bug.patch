@@ -1,0 +1,626 @@
+diff --git a/MemControl/DRAMCache/DRAMCache.cpp b/MemControl/DRAMCache/DRAMCache.cpp
+index e65433d..7c92671 100644
+--- a/MemControl/DRAMCache/DRAMCache.cpp
++++ b/MemControl/DRAMCache/DRAMCache.cpp
+@@ -55,6 +55,28 @@ DRAMCache::DRAMCache( )
+     drcChannels = NULL;
+ 
+     numChannels = 0;
++
++    cycle_ns = 0.0f;
++    averageLatency = 0.0f;
++    averageQueueLatency = 0.0f;
++    averageTotalLatency = 0.0f;
++    averageBankLatency = 0.0f;
++    averageReadhit = 0.0f;
++    averageReadmiss = 0.0f;
++    averageWritehit = 0.0f;
++    averageWritemiss = 0.0f;
++    averagememread = 0.0f;
++    averagedramLatency = 0.0f;
++
++    measureReadmiss = 0;
++    measureReadhit = 0;
++    measureWritemiss = 0;
++    measureWritehit = 0;
++    measurememread = 0;
++
++    measuredLatencies = 0;
++    measuredQueueLatencies = 0;
++    measuredTotalLatencies = 0;
+ }
+ 
+ DRAMCache::~DRAMCache( )
+@@ -65,6 +87,7 @@ void DRAMCache::SetConfig( Config *conf, bool createChildren )
+ {
+     /* Initialize DRAM Cache channels */
+     numChannels = static_cast<ncounter_t>( conf->GetValue( "DRC_CHANNELS" ) );
++    cycle_ns = 1000 / static_cast<double>(conf->GetValue("CLK"));
+ 
+     if( createChildren )
+     {
+@@ -231,6 +254,95 @@ bool DRAMCache::IssueFunctional( NVMainRequest *req )
+     return drcChannels[chan]->IssueFunctional( req );
+ }
+ 
++void DRAMCache::CalLatency(NVMainRequest *request)
++{
++    request->completionCycle = GetEventQueue()->GetCurrentCycle();
++
++    if (request->type ==WRITE || request->type == WRITE_PRECHARGE)
++    {
++        if (request->drchit_flag)
++        {
++            averageWritehit = (( averageWritehit * static_cast<double>(measureWritehit)))
++                                + static_cast<double>(request->completionCycle)
++                                - static_cast<double>(request->arrivalCycle))
++                                / static_cast<double>(measureWritehit+1);
++            measureWritehit++;
++        }
++        else
++        {
++            averageWritemiss = (( averageWritemiss * static_cast<double>(measureWritemiss)))
++                                + static_cast<double>(request->completionCycle)
++                                - static_cast<double>(request->arrivalCycle))
++                                / static_cast<double>(measureWritemiss+1);
++            measureWritemiss++;
++
++        }
++    }
++    else
++    {
++        if (request->memread_flag)
++        {
++            averagememread = ((averagememread * static_cast<double>(measurememread)))
++                                + static_cast<double>(request->memreadendCycle)
++                                - static_cast<double>(request->memreadstartCycle))
++                                / static_cast<double>(measurememread + 1);
++            measurememread++;
++        }
++
++        if (request->drchit_flag)
++        {
++            averageReadhit = ((averageReadhit * static_cast<double>(measureReadhit)))
++                                + static_cast<double>(request->completionCycle)
++                                - static_cast<double>(request->arrivalCycle))
++                                / static_cast<double>(measureReadhit + 1);
++            measureReadhit++;
++        }
++        else
++        {
++            averageReadmiss = ((averageReadmiss * static_cast<double>(measureReadmiss)))
++                                + static_cast<double>(request->completionCycle)
++                                - static_cast<double>(request->arrivalCycle))
++                                / static_cast<double>(measureReadmiss + 1);
++            measureReadmiss++;
++
++        }
++    }
++
++    averageLatency = ((averageLatency * static_cast<double>(measuredLatencies)))
++                    + static_cast<double>(request->completionCycle)
++                    - static_cast<double>(request->issueCycle))
++                    / static_cast<double>(measuredLatencies+1);
++    measuredLatencies += 1;
++
++    averagedramLatency = ((averagedramLatency * static_cast<double>(measuredQueueLatencies)))
++                        + static_cast<double>(request->memreadendCycle)
++                        - static_cast<double>(request->arrivalCycle))
++                        / static_cast<double>(measuredQueueLatencies + 1);
++
++    averageQueueLatency = ((averageQueueLatency * static_cast<double>(measuredQueueLatencies)))
++                        + static_cast<double>(request->issueCycle)
++                        - static_cast<double>(request->arrivalCycle))
++                        / static_cast<double>(measuredQueueLatencies + 1);
++    measuredQueueLatencies += 1;
++
++    averageBankLatency = ((averageBankLatency * static_cast<double>(measuredLatencies)))
++                        + static_cast<double>(request->completionCycle)
++                        - static_cast<double>(request->bankissueCycle))
++                        / static_cast<double>(measuredLatencies + 1);
++
++    if (measuredQueueLatencies % 500000 == 0)
++    {
++        std::cout << "DRAMcache averageLatency " << averageLatency << "  averageBankLatency  " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << " averagememread  " << averagememread << "  averagedramLatency  " << averagedramLatency << std::endl;
++        std::cout << "DRAMcache averageLatency  " << averageLatency * cycle_ns << " averageBankLatency  " << averageBankLatency * cycle_ns << "  averageQueueLatency  " << averageQueueLatency * cycle_ns << "  averagememread  " << averagememread * cycle_ns << "  averagedramLatency  " << averagedramLatency * cycle_ns << std::endl;
++    }
++
++    averageTotalLatency = ((averageTotalLatency * static_cast<double>(measuredTotalLatencies)))
++                        + static_cast<double>(request->completionCycle)
++                        - static_cast<double>(request->arrivalCycle))
++                        / static_cast<double>(measuredTotalLatencies + 1);
++    measuredTotalLatencies += 1;
++}
++
+ bool DRAMCache::RequestComplete( NVMainRequest *req )
+ {
+     bool rv = false;
+@@ -272,6 +384,7 @@ bool DRAMCache::RequestComplete( NVMainRequest *req )
+         }
+         else
+         {
++            CalLatency(req);
+             rv = GetParent( )->RequestComplete( req );
+         }
+     }
+@@ -295,6 +408,12 @@ void DRAMCache::CalculateStats( )
+ {
+     uint64_t i;
+ 
++    std::cout << " total DRAMcache writehit " << measureWritehit << "  writemiss  " << measureWritemiss << "  readhit  " <<  measureReadhit << "  readmiss  " << measureReadmiss << std::endl;
++    std::cout << " total DRAMcache latency writehit " << averageWritehit << "  writemiss " << averageWritemiss << " readhit " << averageReadhit << "  readmiss  " << averageReadmiss << std::endl;
++    std::cout << "DRAMcache averageLatency " << averageLatency << "  averageBankLatency  " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << "  averagememread  " << averagememread << "  averagedramLatency  " << averagedramLatency << "  measureread  " << measurememread << std::endl
++    std::cout << " nstotal DRAMcache latency writehit  " << averageWritehit * cycle_ns << "  writemiss " << averageWritemiss * cycle_ns << "  readhit  " << averageReadhit * cycle_ns << " readmiss " << averageReadmiss * cycle_ns << std::endl;
++    std::cout << "DRAMcachens averagLatency " << averageLatency * cycle_ns << "  averageBankLatency" << averageBankLatency * cycle_ns << "  averageQueueLatency  " << averageQueueLatency * cycle_ns << " averagememread  " << averagememread * cycle_ns << "  averagedramLatency  " << averagedramLatency * cycle_ns << " measureread  " << measurememread << std::endl;
++
+     for( i = 0; i < numChannels; i++ )
+     {
+         drcChannels[i]->CalculateStats( );
+diff --git a/MemControl/DRAMCache/DRAMCache.h b/MemControl/DRAMCache/DRAMCache.h
+index f97d460..ea10397 100644
+--- a/MemControl/DRAMCache/DRAMCache.h
++++ b/MemControl/DRAMCache/DRAMCache.h
+@@ -56,6 +56,7 @@ class DRAMCache : public MemoryController
+     bool IssueCommand( NVMainRequest *req );
+     bool IssueFunctional( NVMainRequest *req );
+     bool RequestComplete( NVMainRequest *req );
++    vod CalLatency( NVMainRequest *request );
+ 
+     void Cycle( ncycle_t );
+ 
+@@ -68,6 +69,11 @@ class DRAMCache : public MemoryController
+     NVMain *mainMemory;
+     AbstractDRAMCache **drcChannels;
+     ncounter_t numChannels;
++    double cycle_ns;
++    double averageLatency, averageQueueLatency, averageTotalLatency, averageBankLatency;
++    double averageReadhit, averageReadmiss, averageWritehit, averageWritemiss, averagememread, averagedramLatency;
++    uint64_t measuredLatencies,measuredQueueLatencies, measuredTotalLatencies;
++    uint64_t measureReadhit, measureReadmiss, measureWritehit, measureWritemiss, measurememread;
+ 
+     void Retranslate( NVMainRequest *req );
+ 
+diff --git a/MemControl/FRFCFS/FRFCFS.cpp b/MemControl/FRFCFS/FRFCFS.cpp
+index 75fb910..ab4a8e5 100644
+--- a/MemControl/FRFCFS/FRFCFS.cpp
++++ b/MemControl/FRFCFS/FRFCFS.cpp
+@@ -57,12 +57,18 @@ FRFCFS::FRFCFS( )
+     queueSize = 32;
+     starvationThreshold = 4;
+ 
++    cycle_ns = 0.0f;
++    averagereadLatency = 0.0f;
++    averagereadQueueLatency = 0.0f;
++    averagereadBankLatency = 0.0f;
++
+     averageLatency = 0.0f;
+     averageQueueLatency = 0.0f;
+     averageTotalLatency = 0.0f;
+     averageBankLatency = 0.0f;
+ 
+     measuredLatencies = 0;
++    measuredreadLatencies = 0;
+     measuredQueueLatencies = 0;
+     measuredTotalLatencies = 0;
+ 
+@@ -107,6 +113,8 @@ void FRFCFS::SetConfig( Config *conf, bool createChildren )
+         queueSize = static_cast<unsigned int>( conf->GetValue( "QueueSize" ) );
+     }
+ 
++    cycle_ns = 1000 / static_cast<double>(conf->GetValue("CLK"));
++
+     MemoryController::SetConfig( conf, createChildren );
+ 
+     SetDebugName( "FRFCFS", conf );
+@@ -201,6 +209,28 @@ bool FRFCFS::RequestComplete( NVMainRequest * request )
+         request->status = MEM_REQUEST_COMPLETE;
+         request->completionCycle = GetEventQueue()->GetCurrentCycle();
+ 
++        if (request->type == READ
++            || request->type == READ_PRECHARGE )
++        {
++            averagereadLatency = ((averagereadLatency * static_cast<double>(measuredreadLatencies))
++                                    + static_cast<double>(request->completionCycle)
++                                    - static_cast<double>(request->issueCycle))
++                                    / static_cast<double>(measuredreadLatencies+1);
++            
++            averagereadQueueLatency = ((averagereadQueueLatency * static_cast<double>(measuredreadLatencies))
++                                    + static_cast<double>(request->issueCycle)
++                                    - static_cast<double>(request->arrivalCycle))
++                                    / static_cast<double>(measuredreadLatencies+1);
++
++            averagereadBankLatency = ((averagereadBankLatency * static_cast<double>(measuredreadLatencies))
++                                    + static_cast<double>(request->completionCycle)
++                                    - static_cast<double>(request->bankissueCycle))
++                                    / static_cast<double>(measuredreadLatencies+1);
++            
++            measuredreadLatencies++;
++
++        }
++
+         /* Update the average latencies based on this request for READ/WRITE only. */
+         averageLatency = ((averageLatency * static_cast<double>(measuredLatencies))
+                            + static_cast<double>(request->completionCycle)
+@@ -223,6 +253,7 @@ bool FRFCFS::RequestComplete( NVMainRequest * request )
+             if (measuredQueueLatencies % 500000 == 0)
+             {
+                 std::cout << "FRFCRS averageLatency " << averageLatency << "  averageBankLatency " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << std::endl;
++                std::cout << "FRFCRSns averageLatency " << averagLatency * cycle_ns << " averageBankLatency " << averageBankLatency * cycle_ns << "  averageQueueLatency  " << averageQueueLatency * cycle_ns << std::endl;
+             }
+         }
+ 
+@@ -289,6 +320,10 @@ void FRFCFS::Cycle( ncycle_t steps )
+ 
+ void FRFCFS::CalculateStats( )
+ {
++    std::cout << "FRFCRS averageLatency " << averageLatency << " averageBankLatency " << averageBankLatency << " avrageQueueLatency " << averageQueueLatency << std::endl;
++    std::cout << "FRFCRread averageLatency " << averagereadLatency << " averageBankLatency " << averagereadBankLatency << " averageQueueLatency " << averagereadQueueLatency << " measuredreadLatencis " << measuredreadLatencies << std::endl;
++    std::cout << "FRFCRSns avrageLatency " << averagLatency * cycle_ns << " averageBankLatency " averageBankLatency * cycle_ns << " averageQueueLatency " << averageQueueLatency * cycle_ns << std::endl;
++    std::cout << "FRCRreadns averageLatency " << averagereadLatency * cycle_ns << " averageBankLatency " << averagereadBankLatency * cycle_ns << " averagQueueLatency " << averagereadQueueLatency * cycle_ns << " measuredreadLatencies " << measuredreadLatencies << std::endl;
+     MemoryController::CalculateStats( );
+ }
+ 
+diff --git a/MemControl/FRFCFS/FRFCFS.h b/MemControl/FRFCFS/FRFCFS.h
+index 2df3d21..6361bfb 100644
+--- a/MemControl/FRFCFS/FRFCFS.h
++++ b/MemControl/FRFCFS/FRFCFS.h
+@@ -62,9 +62,11 @@ class FRFCFS : public MemoryController
+     /* Cached Configuration Variables*/
+     uint64_t queueSize;
+ 
++    doubl cycle_ns;
+     /* Stats */
+-    uint64_t measuredLatencies, measuredQueueLatencies, measuredTotalLatencies;
++    uint64_t measuredreadLatencies, measuredLatencies, measuredQueueLatencies, measuredTotalLatencies;
+     double averageLatency, averageQueueLatency, averageTotalLatency, averageBankLatency;
++    double averagereadLatency, averagereadQueueLatency, averagereadBankLatency;
+     uint64_t mem_reads, mem_writes;
+     uint64_t rb_hits;
+     uint64_t rb_miss;
+diff --git a/MemControl/LO-Cache/LO-Cache.cpp b/MemControl/LO-Cache/LO-Cache.cpp
+index be9855c..6eddeaf 100644
+--- a/MemControl/LO-Cache/LO-Cache.cpp
++++ b/MemControl/LO-Cache/LO-Cache.cpp
+@@ -264,6 +264,7 @@ bool LO_Cache::IssueCommand( NVMainRequest *req )
+     }
+     else
+     {
++        req->arrivalCycle = GetEventQueue()->GetCurrentCycle();
+         Enqueue( 0, req );
+     }
+     
+@@ -352,6 +353,7 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
+             assert( outstandingFills.count( req ) > 0 );
+             NVMainRequest *originalReq = outstandingFills[req];
+             outstandingFills.erase( req );
++            originalReq->memreadendCycle = GetEventQueue()->GetCurrentCycle();
+ 
+             GetParent( )->RequestComplete( originalReq );
+             rv = false;
+@@ -381,6 +383,7 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
+             bool dirtyEvict = false;
+             NVMAddress victim;
+ 
++            req->drchit_flag = 1;
+             if( functionalCache[rank][bank]->SetFull( req->address )
+                 && !functionalCache[rank][bank]->Present( req->address ) )
+             {
+@@ -390,8 +393,14 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
+                 drc_evicts++;
+             }
+ 
++            if (dirtyEvict)
++            {
++                req->drchit_flag = 0;
++            }
++
+             (void)functionalCache[rank][bank]->Install( req->address, req->data );
+ 
++            req->memreadstartCycle = GetEventQueue()->GetCurrentCycle();
+             /* Send back to requestor. */
+             GetParent( )->RequestComplete( req );
+             rv = false;
+@@ -430,6 +439,8 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
+ 
+             req->address.GetTranslatedAddress( NULL, NULL, &bank, &rank, NULL, NULL );
+ 
++            req->memreadstartCycle = GetEventQueue()->GetCurrentCycle();
++
+             /* Check for a hit. */
+             bool hit = functionalCache[rank][bank]->Present( req->address );
+ 
+@@ -447,6 +458,8 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
+ 
+                 assert( outstandingFills.count( req ) == 0 );
+                 outstandingFills.insert( std::pair<NVMainRequest*, NVMainRequest*>( memReq, req ) );
++                req->memread_flag = 1;
++                req->memreadstartCycle = GetEventQueue()->GetCurrentCycle();
+ 
+                 if (mainMemory->IsIssuable( memReq, NULL )) {
+                     mainMemory->IssueCommand( memReq );
+@@ -458,9 +471,11 @@ bool LO_Cache::RequestComplete( NVMainRequest *req )
+                 }
+ 
+                 drc_miss++;
++                req->drchit_flag = 0;
+             }
+             else
+             {
++                req->drchit_flag = 1;
+                 /* Send back to requestor. */
+                 GetParent( )->RequestComplete( req );
+                 rv = false;
+@@ -521,6 +536,7 @@ void LO_Cache::CalculateStats( )
+     if( drc_hits+drc_miss > 0 )
+         drc_hitrate = static_cast<float>(drc_hits) / static_cast<float>(drc_miss+drc_hits);
+ 
++    std::cout << " dirty_evict " << drc_dirty_evicts << " evict " << drc_evicts << " rb_hits " << rb_hits << " rb_miss " << rb_miss << std::endl;
+     MemoryController::CalculateStats( );
+ }
+ 
+diff --git a/include/NVMainRequest.h b/include/NVMainRequest.h
+index eb9bb1e..be32802 100644
+--- a/include/NVMainRequest.h
++++ b/include/NVMainRequest.h
+@@ -129,6 +129,10 @@ class NVMainRequest
+         issueCycle = 0; 
+         queueCycle = 0;
+         bankissueCycle = 0;
++        memreadstartCycle = 0;
++        memreadendCycle = 0;
++        memread_flag = 0;
++        drchit_flag = 0;
+         completionCycle = 0; 
+         isPrefetch = false; 
+         programCounter = 0; 
+@@ -154,6 +158,7 @@ class NVMainRequest
+     void *reqInfo;                 //< User-defined info for request (frontend only)
+     uint64_t flags;                //< Flags for NVMain (backend only)
+     bool isPrefetch;               //< Whether request is a prefetch or not
++    uint64_t memread_flag;
+     NVMAddress pfTrigger;          //< Address that triggered this prefetch
+     uint64_t programCounter;       //< Program counter of CPU issuing request
+     ncounter_t burstCount;         //< Number of bursts (used for variable-size requests.
+@@ -164,7 +169,10 @@ class NVMainRequest
+     ncycle_t issueCycle;           //< When the memory controller issued the request to the interconnect (dequeued)
+     ncycle_t completionCycle;      //< When the request was sent back to the requestor
+     ncycle_t bankissueCycle;
++    ncycle_t memreadstartCycle;
++    ncycle_t memreadendCycle;
+ 
++    ncycle_t drchit_flag;
+     ncycle_t writeProgress;        //< Number of cycles remaining for write request
+     ncycle_t cancellations;        //< Number of times this request was cancelled
+ 
+@@ -203,12 +211,16 @@ const NVMainRequest& NVMainRequest::operator=( const NVMainRequest& m )
+     pfTrigger = m.pfTrigger;
+     programCounter = m.programCounter;
+     owner = m.owner;
++    memread_flag = m.memread_flag;
+ 
+     bankissueCycle = m.bankissueCycle;
+     arrivalCycle = m.arrivalCycle;
+     queueCycle = m.queueCycle;
+     issueCycle = m.issueCycle;
++    memreadstartCycle = m.memreadstartCycle;
++    memreadendCycle = m.memreadendCycle;
+     completionCycle = m.completionCycle;
++    drchit_flag = m.drchit_flag;
+ 
+     return *this; 
+ }
+diff --git a/src/AddressTranslator.cpp b/src/AddressTranslator.cpp
+index 76633fd..5f43429 100644
+--- a/src/AddressTranslator.cpp
++++ b/src/AddressTranslator.cpp
+@@ -39,6 +39,7 @@
+ 
+ #include "src/AddressTranslator.h"
+ #include "include/NVMHelpers.h"
++#include <assert.h>
+ 
+ 
+ using namespace NVM;
+diff --git a/src/EventQueue.cpp b/src/EventQueue.cpp
+index 24fb61e..dca241e 100644
+--- a/src/EventQueue.cpp
++++ b/src/EventQueue.cpp
+@@ -333,6 +333,27 @@ void EventQueue::Loop( ncycle_t steps )
+         return;
+     }
+ 
++    while (steps > 0) {
++        /* No events in this step amount, just change current cycle. */
++        if (nextEventCycle > currentCycle )
++        {
++            return;
++        }
++
++        /* Process will update nextEventCycle for the next loop iteration. */
++        Process();
++    }
++}
++
++void EventQueue::Loop( ncycle_t steps )
++{
++    /* Special case. */
++    if( steps == 0 && nextEventCycle == currentCycle )
++    {
++        // Process();
++        return;
++    }
++
+     ncycle_t stepCycles = steps;
+ 
+     while( stepCycles > 0 )
+@@ -350,7 +371,7 @@ void EventQueue::Loop( ncycle_t steps )
+         stepCycles -= currentSteps;
+ 
+         /* Process will update nextEventCycle for the next loop iteration. */
+-        Process( );
++        //Process( );
+     }
+ }
+ 
+@@ -476,11 +497,13 @@ void GlobalEventQueue::AddSystem( NVMain *subSystem, Config *config )
+ void GlobalEventQueue::Cycle( ncycle_t steps )
+ {
+     EventQueue *nextEventQueue;
++    EventQueue *othernextEventQueue;
+     ncycle_t iterationSteps = 0;
+ 
+     while( iterationSteps <= steps )
+     {
+         ncycle_t nextEvent = GetNextEvent( &nextEventQueue );
++        ncycle_t oteherlocalQueueSteps = 0;
+ 
+         ncycle_t globalQueueSteps = 0;
+         if( nextEvent > currentCycle )
+@@ -496,7 +519,21 @@ void GlobalEventQueue::Cycle( ncycle_t steps )
+             break;
+         }
+ 
++        std::map<EventQueue *, double>::const_iterator iter;
++        for (iter = eventQueues.begin(); iter != eventQueues.end(); iter++) {
++            if (nextEventQueue != iter->first)
++            {
++                othernextEventQueue = iter->first;
++                double frequencyMultiplier = frequency / iter->second;
++                oteherlocalQueueSteps = static_cast<ncycle_t>(static_cast<double>(currentCycle+globalQueueSteps) / frequencyMultiplier) - iter->first->GetCurrentCycle();
++                if (static_cast<ncycle_t>(static_cast<double>(currentCycle+globalQueueSteps) / frequencyMultiplier) >iter->first->GetCurrentCycle())
++                    othernextEventQueue->Loop2(oteherlocalQueueSteps);
++            }
++        }
++
+         ncycle_t localQueueSteps = nextEventQueue->GetNextEvent( ) - nextEventQueue->GetCurrentCycle( );
++
++        nextEventQueue->Loop2( localQueueSteps );
+         nextEventQueue->Loop( localQueueSteps );
+ 
+         currentCycle += globalQueueSteps;
+@@ -562,8 +599,9 @@ void GlobalEventQueue::Sync( )
+         double setCycle = static_cast<double>(currentCycle) / frequencyMultiplier;
+         ncycle_t stepCount = static_cast<ncycle_t>(setCycle) - iter->first->GetCurrentCycle( );
+ 
+-        if( static_cast<ncycle_t>(setCycle) > iter->first->GetCurrentCycle( ) )
++        if( static_cast<ncycle_t>(setCycle) >= iter->first->GetCurrentCycle( ) )
+         {
++            iter->first->Loop2( stepCount );
+             iter->first->Loop( stepCount );
+         }
+     }
+diff --git a/src/EventQueue.h b/src/EventQueue.h
+index 4850a44..a062e2a 100644
+--- a/src/EventQueue.h
++++ b/src/EventQueue.h
+@@ -115,6 +115,7 @@ class EventQueue
+     void Process( );
+     void Loop( );
+     void Loop( ncycle_t steps );
++    void Loop2( ncycle_t steps );
+ 
+     void SetFrequency( double freq );
+     double GetFrequency( );
+diff --git a/src/Params.cpp b/src/Params.cpp
+index 50d820b..7149f0c 100644
+--- a/src/Params.cpp
++++ b/src/Params.cpp
+@@ -76,6 +76,7 @@ Params::Params( )
+     Epdpf = 0.000000;
+     Epdps = 0.000000;
+     Voltage = 1.5;
++    decdelay = 0;
+ 
+     /* 
+      * Default to 30 ohms for read. This means 60 ohms for 
+@@ -359,6 +360,7 @@ void Params::SetParams( Config *c )
+     ConvertTiming( c, "tXS", tXS );
+     ConvertTiming( c, "tXSDLL", tXSDLL );
+ 
++    c->GetValueUL( "decdelay", decdelay);
+     c->GetValueUL( "tRDPDEN", tRDPDEN );
+     c->GetValueUL( "tWRPDEN", tWRPDEN );
+     c->GetValueUL( "tWRAPDEN", tWRAPDEN );
+diff --git a/src/Params.h b/src/Params.h
+index c4a3df3..cc411e0 100644
+--- a/src/Params.h
++++ b/src/Params.h
+@@ -166,6 +166,7 @@ class Params
+     ncycle_t tXPDLL;
+     ncycle_t tXS;
+     ncycle_t tXSDLL;
++    ncycle_t decdelay;
+ 
+     ncycle_t tRDPDEN; // interval between Read/ReadA and PowerDown
+     ncycle_t tWRPDEN; // interval between Write and PowerDown
+diff --git a/src/SubArray.cpp b/src/SubArray.cpp
+index 18fc063..9b75ef0 100644
+--- a/src/SubArray.cpp
++++ b/src/SubArray.cpp
+@@ -80,6 +80,7 @@ SubArray::SubArray( )
+     
+     dataCycles = 0;
+     worstCaseWrite = 0;
++    decdelay = 0;
+ 
+     subArrayEnergy = 0.0f;
+     activeEnergy = 0.0f;
+@@ -154,6 +155,7 @@ void SubArray::SetConfig( Config *c, bool createChildren )
+     params->SetParams( c );
+     SetParams( params );
+ 
++    decdelay = p->decdelay;
+     MATHeight = p->MATHeight;
+     /* customize MAT size */
+     if( conf->KeyExists( "MATWidth" ) )
+@@ -389,7 +391,8 @@ bool SubArray::Read( NVMainRequest *request )
+     }
+ 
+     /* Any additional latency for data encoding. */
+-    ncycles_t decLat = (dataEncoder ? dataEncoder->Read( request ) : 0);
++    //ncycles_t decLat = (dataEncoder ? dataEncoder->Read( request ) : 0);
++    ncycles_t decLat = decdelay;
+ 
+     /* Update timing constraints */
+     if( request->type == READ_PRECHARGE )
+diff --git a/src/SubArray.h b/src/SubArray.h
+index 5fe60ef..ea38021 100644
+--- a/src/SubArray.h
++++ b/src/SubArray.h
+@@ -171,6 +171,7 @@ class SubArray : public NVMObject
+     ncounter_t cancelledWrites;
+     ncounter_t cancelledWriteTime;
+     ncounter_t pausedWrites;
++    ncycle_t decdelay;
+ 
+     ncounter_t actWaits;
+     ncounter_t actWaitTotal;
+diff --git a/traceReader/NVMainTrace/NVMainTraceReader.cpp b/traceReader/NVMainTrace/NVMainTraceReader.cpp
+index 7386fef..52b407e 100644
+--- a/traceReader/NVMainTrace/NVMainTraceReader.cpp
++++ b/traceReader/NVMainTrace/NVMainTraceReader.cpp
+@@ -92,7 +92,7 @@ bool NVMainTraceReader::GetNextAccess( TraceLine *nextAccess )
+     std::string fullLine;
+ 
+     /* We will read in a full line and fill in these values */
+-    unsigned int cycle = 0;
++    uint64_t cycle = 0;
+     OpType operation = READ;
+     uint64_t address;
+     NVMDataBlock dataBlock;
+@@ -135,7 +135,14 @@ bool NVMainTraceReader::GetNextAccess( TraceLine *nextAccess )
+         if( field != "" )
+         {
+             if( fieldId == 0 )
+-                cycle = atoi( field.c_str( ) );
++            {
++                std::stringstream fmat;
++
++                fmat << std::dec << field;
++                fmat >> cycle;
++
++                //cycle = atoi( field.c_str( ) );
++            }
+             else if( fieldId == 1 )
+             {
+                 if( field == "R" )
