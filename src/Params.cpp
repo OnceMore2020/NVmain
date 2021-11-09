@@ -260,6 +260,7 @@ void Params::SetParams( Config *c )
     c->GetValueUL( "DeviceWidth", DeviceWidth );
     c->GetValueUL( "CLK", CLK );
     c->GetValueUL( "RATE", RATE );
+    c->GetValueUL( "LogLevel", LogLevel );
     c->GetValueUL( "CPUFreq", CPUFreq );
 
     c->GetEnergy( "EIDD0", EIDD0 );

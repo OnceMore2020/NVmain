@@ -1,0 +1,75 @@
+diff --git a/MemControl/FRFCFS/FRFCFS.cpp b/MemControl/FRFCFS/FRFCFS.cpp
+index 4822232..75fb910 100644
+--- a/MemControl/FRFCFS/FRFCFS.cpp
++++ b/MemControl/FRFCFS/FRFCFS.cpp
+@@ -71,6 +71,7 @@ FRFCFS::FRFCFS( )
+ 
+     rb_hits = 0;
+     rb_miss = 0;
++    LogLevel = 0;
+ 
+     write_pauses = 0;
+ 
+@@ -96,6 +97,11 @@ void FRFCFS::SetConfig( Config *conf, bool createChildren )
+         starvationThreshold = static_cast<unsigned int>( conf->GetValue( "StarvationThreshold" ) );
+     }
+ 
++    if (conf->KeyExists("LogLevel"))
++    {
++        LogLevel = static_cast<unsigned int>(conf->GetValue("LogLevl"));
++    }
++
+     if( conf->KeyExists( "QueueSize" ) )
+     {
+         queueSize = static_cast<unsigned int>( conf->GetValue( "QueueSize" ) );
+@@ -212,9 +218,12 @@ bool FRFCFS::RequestComplete( NVMainRequest * request )
+                             + static_cast<double>(request->completionCycle)
+                             - static_cast<double>(request->bankissueCycle))
+                             / static_cast<double>(measuredLatencies + 1);
+-        if (measuredQueueLatencies % 500000 == 0)
++        if (LogLevel > 5)
+         {
+-            std::cout << "FRFCRS averageLatency " << averageLatency << "  averageBankLatency " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << std::endl;
++            if (measuredQueueLatencies % 500000 == 0)
++            {
++                std::cout << "FRFCRS averageLatency " << averageLatency << "  averageBankLatency " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << std::endl;
++            }
+         }
+ 
+         averageTotalLatency = ((averageTotalLatency * static_cast<double>(measuredTotalLatencies))
+diff --git a/MemControl/FRFCFS/FRFCFS.h b/MemControl/FRFCFS/FRFCFS.h
+index 3c2b8da..2df3d21 100644
+--- a/MemControl/FRFCFS/FRFCFS.h
++++ b/MemControl/FRFCFS/FRFCFS.h
+@@ -68,6 +68,7 @@ class FRFCFS : public MemoryController
+     uint64_t mem_reads, mem_writes;
+     uint64_t rb_hits;
+     uint64_t rb_miss;
++    uint64_t LogLevel;
+     uint64_t starvation_precharges;
+     uint64_t write_pauses;
+ };
+diff --git a/src/Params.cpp b/src/Params.cpp
+index ee88453..50d820b 100644
+--- a/src/Params.cpp
++++ b/src/Params.cpp
+@@ -260,6 +260,7 @@ void Params::SetParams( Config *c )
+     c->GetValueUL( "DeviceWidth", DeviceWidth );
+     c->GetValueUL( "CLK", CLK );
+     c->GetValueUL( "RATE", RATE );
++    c->GetValueUL( "LogLevel", LogLevel );
+     c->GetValueUL( "CPUFreq", CPUFreq );
+ 
+     c->GetEnergy( "EIDD0", EIDD0 );
+diff --git a/src/Params.h b/src/Params.h
+index c8eb255..c4a3df3 100644
+--- a/src/Params.h
++++ b/src/Params.h
+@@ -134,6 +134,7 @@ class Params
+     ncounter_t RAW;
+     ncounter_t MATHeight;
+     ncounter_t RBSize;
++    ncounter_t LogLevel;
+ 
+     ncycle_t tAL;
+     ncycle_t tBURST;

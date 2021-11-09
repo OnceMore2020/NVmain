@@ -71,6 +71,7 @@ FRFCFS::FRFCFS( )
 
     rb_hits = 0;
     rb_miss = 0;
+    LogLevel = 0;
 
     write_pauses = 0;
 
@@ -94,6 +95,11 @@ void FRFCFS::SetConfig( Config *conf, bool createChildren )
     if( conf->KeyExists( "StarvationThreshold" ) )
     {
         starvationThreshold = static_cast<unsigned int>( conf->GetValue( "StarvationThreshold" ) );
+    }
+
+    if (conf->KeyExists("LogLevel"))
+    {
+        LogLevel = static_cast<unsigned int>(conf->GetValue("LogLevl"));
     }
 
     if( conf->KeyExists( "QueueSize" ) )
@@ -212,9 +218,12 @@ bool FRFCFS::RequestComplete( NVMainRequest * request )
                             + static_cast<double>(request->completionCycle)
                             - static_cast<double>(request->bankissueCycle))
                             / static_cast<double>(measuredLatencies + 1);
-        if (measuredQueueLatencies % 500000 == 0)
+        if (LogLevel > 5)
         {
-            std::cout << "FRFCRS averageLatency " << averageLatency << "  averageBankLatency " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << std::endl;
+            if (measuredQueueLatencies % 500000 == 0)
+            {
+                std::cout << "FRFCRS averageLatency " << averageLatency << "  averageBankLatency " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << std::endl;
+            }
         }
 
         averageTotalLatency = ((averageTotalLatency * static_cast<double>(measuredTotalLatencies))
