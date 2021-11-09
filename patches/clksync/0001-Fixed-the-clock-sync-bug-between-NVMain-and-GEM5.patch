@@ -1,0 +1,100 @@
+diff --git a/Simulators/gem5/nvmain_mem.cc b/Simulators/gem5/nvmain_mem.cc
+index 5fa222b..ad59ea3 100644
+--- a/Simulators/gem5/nvmain_mem.cc
++++ b/Simulators/gem5/nvmain_mem.cc
+@@ -94,6 +94,7 @@ NVMainMemory::NVMainMemory(const Params *p)
+     retryRead = false;
+     retryWrite = false;
+     retryResp = false;
++    sync = false;
+     m_requests_outstanding = 0;
+ 
+     /*
+@@ -119,6 +120,7 @@ NVMainMemory::NVMainMemory(const Params *p)
+    RATE = m_nvmainConfig->GetValue( "RATE" );
+ 
+    lastWakeup = curTick();
++   startWakeup = curTick();
+ }
+ 
+ 
+@@ -173,6 +175,7 @@ NVMainMemory::init()
+         m_nvmainGlobalEventQueue->SetFrequency( m_nvmainConfig->GetEnergy( "CPUFreq" ) * 1000000.0 );
+         SetGlobalEventQueue( m_nvmainGlobalEventQueue );
+ 
++        clock = static_cast<Tick>(round(1000000 / m_nvmainConfig->GetEnergy("CPUFreq")));
+         // TODO: Confirm global event queue frequency is the same as this SimObject's clock.
+ 
+         /*  Add any specified hooks */
+@@ -227,6 +230,7 @@ void NVMainMemory::startup()
+         schedule(masterInstance->clockEvent, curTick() + clock);
+ 
+     lastWakeup = curTick();
++    startWakeup = curTick();
+ }
+ 
+ 
+@@ -414,6 +418,18 @@ NVMainMemory::MemoryPort::recvFunctional(PacketPtr pkt)
+ bool
+ NVMainMemory::MemoryPort::recvTimingReq(PacketPtr pkt)
+ {
++    /*
++    * If the difference between the number of ticks running in the system
++    * and the number of subsystems is within 5 cycles, they are considered to be synchronized.
++    * Otherwise, the clock must be synchronizd.
++    */
++    ncycle_t runCycles = (curTick() - memory.startWakeup) / memory.clock;
++    if ((runCycles - memory.masterInstance->m_nvmainGlobalEventQueue->GetCurrentCycle() > 5) && memory.sync == false) {
++        ncycle_t stepCycles = (curTick() - memory.lastWakeup) / memory.clock;
++        memory.masterInstance->m_nvmainGlobalEventQueue->Cycle(stepCycles);
++        memory.lastWakeup = curTick();
++    }
++
+     /* added by Tao @ 01/24/2013, just copy the code from SimpleMemory */
+     /// @todo temporary hack to deal with memory corruption issues until
+     /// 4-phase transactions are complete
+@@ -854,6 +870,7 @@ void NVMainMemory::tick( )
+     if (masterInstance == this)
+     {
+         /* Keep NVMain in sync with gem5. */
++        sync = true;
+         assert(curTick() >= lastWakeup);
+         ncycle_t stepCycles = (curTick() - lastWakeup) / clock;
+ 
+@@ -880,6 +897,7 @@ void NVMainMemory::tick( )
+             nextEventCycle = nextEvent;
+             ScheduleClockEvent( nextWake );
+         }
++        sync = false;
+     }
+ }
+ 
+diff --git a/Simulators/gem5/nvmain_mem.hh b/Simulators/gem5/nvmain_mem.hh
+index b043e93..466badd 100644
+--- a/Simulators/gem5/nvmain_mem.hh
++++ b/Simulators/gem5/nvmain_mem.hh
+@@ -48,6 +48,7 @@
+ 
+ #include <fstream>
+ #include <ostream>
++#include <cmath>
+ 
+ #include "NVM/nvmain.h"
+ #include "base/callback.hh"
+@@ -164,6 +165,7 @@ class NVMainMemory : public AbstractMemory, public NVM::NVMObject
+     NVMainStatPrinter statPrinter;
+     NVMainStatReseter statReseter;
+     Tick lastWakeup;
++    Tick startWakeup;
+ 
+     uint64_t m_requests_outstanding;
+ 
+@@ -199,7 +201,7 @@ class NVMainMemory : public AbstractMemory, public NVM::NVMObject
+     static NVMainMemory *masterInstance;
+     NVMainMemory *otherInstance;
+     std::vector<NVMainMemory *> allInstances;
+-    bool retryRead, retryWrite, retryResp;
++    bool retryRead, retryWrite, retryResp, sync;
+     std::deque<PacketPtr> responseQueue;
+     std::vector<PacketPtr> pendingDelete;
+     std::map<NVM::NVMainRequest *, NVMainMemoryRequest *> m_request_map;

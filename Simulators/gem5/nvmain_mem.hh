@@ -48,6 +48,7 @@
 
 #include <fstream>
 #include <ostream>
+#include <cmath>
 
 #include "NVM/nvmain.h"
 #include "base/callback.hh"
@@ -164,6 +165,7 @@ class NVMainMemory : public AbstractMemory, public NVM::NVMObject
     NVMainStatPrinter statPrinter;
     NVMainStatReseter statReseter;
     Tick lastWakeup;
+    Tick startWakeup;
 
     uint64_t m_requests_outstanding;
 
@@ -199,7 +201,7 @@ class NVMainMemory : public AbstractMemory, public NVM::NVMObject
     static NVMainMemory *masterInstance;
     NVMainMemory *otherInstance;
     std::vector<NVMainMemory *> allInstances;
-    bool retryRead, retryWrite, retryResp;
+    bool retryRead, retryWrite, retryResp, sync;
     std::deque<PacketPtr> responseQueue;
     std::vector<PacketPtr> pendingDelete;
     std::map<NVM::NVMainRequest *, NVMainMemoryRequest *> m_request_map;
