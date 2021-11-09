@@ -79,6 +79,8 @@ MemoryController::MemoryController( )
     curQueue = 0;
     nextRefreshRank = 0;
     nextRefreshBank = 0;
+    lastreqcycle=NULL;
+    lastreqbankcycle=NULL;
 
     handledRefresh = std::numeric_limits<ncycle_t>::max( );
 }
@@ -90,6 +92,8 @@ MemoryController::~MemoryController( )
         delete [] activateQueued[i];
         delete [] bankNeedRefresh[i];
         delete [] refreshQueued[i];
+        delete [] lastreqcycle[i];
+        delete [] lastreqbankcycle[i];
 
         for( ncounter_t j = 0; j < p->BANKS; j++ )
         {
@@ -112,6 +116,8 @@ MemoryController::~MemoryController( )
     delete [] activeSubArray;
     delete [] bankNeedRefresh;
     delete [] rankPowerDown;
+    delete [] lastreqcycle;
+    delete [] lastreqbankcycle;
     
     if( p->UseRefresh )
     {
@@ -371,6 +377,14 @@ void MemoryController::SetConfig( Config *conf, bool createChildren )
         cols = p->COLS;
         banks = p->BANKS;
         ranks = p->RANKS;
+        lastreqcycle = new ncycle_t * [p->RANKS];
+        lastreqbankcycle = new ncycle_t * [p->RANKS];
+
+        for (ncounter_t i = 0; i < p->RANKS; i++)
+        {
+            lastreqcycle[i] = new ncycle_t [p->BANKS];
+            lastreqbankcycle[i] = new ncycle_t [p->BANKS];
+        }
 
         TranslationMethod *method = new TranslationMethod( );
 
@@ -1669,6 +1683,19 @@ void MemoryController::CycleCommandQueues( )
             && GetChild( )->IsIssuable( commandQueues[queueId].at( 0 ), &fail ) )
         {
             NVMainRequest *queueHead = commandQueues[queueId].at( 0 );
+            ncounter_t row, col, bank, rank, channel, subarray;
+            queueHead->address.GetTranslatedAddress( &row, &col, &bank, &rank, &channel, &subarray);
+
+            if (lastreqcycle[rank][bank] == queueHead->issueCycle)
+            {
+                queueHead->bankissueCycle = lastreqbankcycle[rank][bank];
+            }
+            else
+            {
+                queueHead->bankissueCycle = GetEventQueue()->GetCurrentCycle();
+                lastreqcycle[rank][bank] = queueHead->issueCycle;
+                lastreqbankcycle[rank][bank] = GetEventQueue()->GetCurrentCycle();
+            }
 
             *debugStream << GetEventQueue()->GetCurrentCycle() << " MemoryController: Issued request type "
                          << queueHead->type << " for address 0x" << std::hex 

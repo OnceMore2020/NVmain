@@ -64,7 +64,7 @@ class FRFCFS : public MemoryController
 
     /* Stats */
     uint64_t measuredLatencies, measuredQueueLatencies, measuredTotalLatencies;
-    double averageLatency, averageQueueLatency, averageTotalLatency;
+    double averageLatency, averageQueueLatency, averageTotalLatency, averageBankLatency;
     uint64_t mem_reads, mem_writes;
     uint64_t rb_hits;
     uint64_t rb_miss;

@@ -60,6 +60,7 @@ FRFCFS::FRFCFS( )
     averageLatency = 0.0f;
     averageQueueLatency = 0.0f;
     averageTotalLatency = 0.0f;
+    averageBankLatency = 0.0f;
 
     measuredLatencies = 0;
     measuredQueueLatencies = 0;
@@ -206,6 +207,15 @@ bool FRFCFS::RequestComplete( NVMainRequest * request )
                                 - static_cast<double>(request->arrivalCycle))
                             / static_cast<double>(measuredQueueLatencies+1);
         measuredQueueLatencies += 1;
+
+        averageBankLatency = ((averageBankLatency * static_cast<double)(measuredLatencies))
+                            + static_cast<double>(request->completionCycle)
+                            - static_cast<double>(request->bankissueCycle))
+                            / static_cast<double>(measuredLatencies + 1);
+        if (measuredQueueLatencies % 500000 == 0)
+        {
+            std::cout << "FRFCRS averageLatency " << averageLatency << "  averageBankLatency " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << std::endl;
+        }
 
         averageTotalLatency = ((averageTotalLatency * static_cast<double>(measuredTotalLatencies))
                                 + static_cast<double>(request->completionCycle)

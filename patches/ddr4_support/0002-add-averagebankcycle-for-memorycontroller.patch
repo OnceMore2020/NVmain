@@ -1,0 +1,148 @@
+diff --git a/MemControl/FRFCFS/FRFCFS.cpp b/MemControl/FRFCFS/FRFCFS.cpp
+index 92d02d6..4822232 100644
+--- a/MemControl/FRFCFS/FRFCFS.cpp
++++ b/MemControl/FRFCFS/FRFCFS.cpp
+@@ -60,6 +60,7 @@ FRFCFS::FRFCFS( )
+     averageLatency = 0.0f;
+     averageQueueLatency = 0.0f;
+     averageTotalLatency = 0.0f;
++    averageBankLatency = 0.0f;
+ 
+     measuredLatencies = 0;
+     measuredQueueLatencies = 0;
+@@ -207,6 +208,15 @@ bool FRFCFS::RequestComplete( NVMainRequest * request )
+                             / static_cast<double>(measuredQueueLatencies+1);
+         measuredQueueLatencies += 1;
+ 
++        averageBankLatency = ((averageBankLatency * static_cast<double)(measuredLatencies))
++                            + static_cast<double>(request->completionCycle)
++                            - static_cast<double>(request->bankissueCycle))
++                            / static_cast<double>(measuredLatencies + 1);
++        if (measuredQueueLatencies % 500000 == 0)
++        {
++            std::cout << "FRFCRS averageLatency " << averageLatency << "  averageBankLatency " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << std::endl;
++        }
++
+         averageTotalLatency = ((averageTotalLatency * static_cast<double>(measuredTotalLatencies))
+                                 + static_cast<double>(request->completionCycle)
+                                 - static_cast<double>(request->arrivalCycle))
+diff --git a/MemControl/FRFCFS/FRFCFS.h b/MemControl/FRFCFS/FRFCFS.h
+index 6e55d0e..3c2b8da 100644
+--- a/MemControl/FRFCFS/FRFCFS.h
++++ b/MemControl/FRFCFS/FRFCFS.h
+@@ -64,7 +64,7 @@ class FRFCFS : public MemoryController
+ 
+     /* Stats */
+     uint64_t measuredLatencies, measuredQueueLatencies, measuredTotalLatencies;
+-    double averageLatency, averageQueueLatency, averageTotalLatency;
++    double averageLatency, averageQueueLatency, averageTotalLatency, averageBankLatency;
+     uint64_t mem_reads, mem_writes;
+     uint64_t rb_hits;
+     uint64_t rb_miss;
+diff --git a/include/NVMainRequest.h b/include/NVMainRequest.h
+index 2e84586..eb9bb1e 100644
+--- a/include/NVMainRequest.h
++++ b/include/NVMainRequest.h
+@@ -128,6 +128,7 @@ class NVMainRequest
+         arrivalCycle = 0; 
+         issueCycle = 0; 
+         queueCycle = 0;
++        bankissueCycle = 0;
+         completionCycle = 0; 
+         isPrefetch = false; 
+         programCounter = 0; 
+@@ -162,6 +163,7 @@ class NVMainRequest
+     ncycle_t queueCycle;           //< When the memory controller accepted (queued) the request
+     ncycle_t issueCycle;           //< When the memory controller issued the request to the interconnect (dequeued)
+     ncycle_t completionCycle;      //< When the request was sent back to the requestor
++    ncycle_t bankissueCycle;
+ 
+     ncycle_t writeProgress;        //< Number of cycles remaining for write request
+     ncycle_t cancellations;        //< Number of times this request was cancelled
+@@ -202,6 +204,7 @@ const NVMainRequest& NVMainRequest::operator=( const NVMainRequest& m )
+     programCounter = m.programCounter;
+     owner = m.owner;
+ 
++    bankissueCycle = m.bankissueCycle;
+     arrivalCycle = m.arrivalCycle;
+     queueCycle = m.queueCycle;
+     issueCycle = m.issueCycle;
+diff --git a/src/MemoryController.cpp b/src/MemoryController.cpp
+index 8e86be7..b2f9e57 100644
+--- a/src/MemoryController.cpp
++++ b/src/MemoryController.cpp
+@@ -79,6 +79,8 @@ MemoryController::MemoryController( )
+     curQueue = 0;
+     nextRefreshRank = 0;
+     nextRefreshBank = 0;
++    lastreqcycle=NULL;
++    lastreqbankcycle=NULL;
+ 
+     handledRefresh = std::numeric_limits<ncycle_t>::max( );
+ }
+@@ -90,6 +92,8 @@ MemoryController::~MemoryController( )
+         delete [] activateQueued[i];
+         delete [] bankNeedRefresh[i];
+         delete [] refreshQueued[i];
++        delete [] lastreqcycle[i];
++        delete [] lastreqbankcycle[i];
+ 
+         for( ncounter_t j = 0; j < p->BANKS; j++ )
+         {
+@@ -112,6 +116,8 @@ MemoryController::~MemoryController( )
+     delete [] activeSubArray;
+     delete [] bankNeedRefresh;
+     delete [] rankPowerDown;
++    delete [] lastreqcycle;
++    delete [] lastreqbankcycle;
+     
+     if( p->UseRefresh )
+     {
+@@ -371,6 +377,14 @@ void MemoryController::SetConfig( Config *conf, bool createChildren )
+         cols = p->COLS;
+         banks = p->BANKS;
+         ranks = p->RANKS;
++        lastreqcycle = new ncycle_t * [p->RANKS];
++        lastreqbankcycle = new ncycle_t * [p->RANKS];
++
++        for (ncounter_t i = 0; i < p->RANKS; i++)
++        {
++            lastreqcycle[i] = new ncycle_t [p->BANKS];
++            lastreqbankcycle[i] = new ncycle_t [p->BANKS];
++        }
+ 
+         TranslationMethod *method = new TranslationMethod( );
+ 
+@@ -1669,6 +1683,19 @@ void MemoryController::CycleCommandQueues( )
+             && GetChild( )->IsIssuable( commandQueues[queueId].at( 0 ), &fail ) )
+         {
+             NVMainRequest *queueHead = commandQueues[queueId].at( 0 );
++            ncounter_t row, col, bank, rank, channel, subarray;
++            queueHead->address.GetTranslatedAddress( &row, &col, &bank, &rank, &channel, &subarray);
++
++            if (lastreqcycle[rank][bank] == queueHead->issueCycle)
++            {
++                queueHead->bankissueCycle = lastreqbankcycle[rank][bank];
++            }
++            else
++            {
++                queueHead->bankissueCycle = GetEventQueue()->GetCurrentCycle();
++                lastreqcycle[rank][bank] = queueHead->issueCycle;
++                lastreqbankcycle[rank][bank] = GetEventQueue()->GetCurrentCycle();
++            }
+ 
+             *debugStream << GetEventQueue()->GetCurrentCycle() << " MemoryController: Issued request type "
+                          << queueHead->type << " for address 0x" << std::hex 
+diff --git a/src/MemoryController.h b/src/MemoryController.h
+index 0c545c0..552880f 100644
+--- a/src/MemoryController.h
++++ b/src/MemoryController.h
+@@ -133,6 +133,8 @@ class MemoryController : public NVMObject
+     ncycle_t lastCommandWake;
+     ncounter_t wakeupCount;
+     ncycle_t lastIssueCycle;
++    ncycle_t **lastreqcycle;
++    ncycle_t **lastreqbankcycle;
+ 
+     std::list<NVMainRequest *> *transactionQueues;
+     std::deque<NVMainRequest *> *commandQueues;
