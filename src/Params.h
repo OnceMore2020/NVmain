@@ -130,6 +130,7 @@ class Params
     ncounter_t CHANNELS;
     ncounter_t RANKS;
     ncounter_t BANKS;
+    ncounter_t BANKGROUPS;
     ncounter_t RAW;
     ncounter_t MATHeight;
     ncounter_t RBSize;
@@ -137,7 +138,8 @@ class Params
     ncycle_t tAL;
     ncycle_t tBURST;
     ncycle_t tCAS;
-    ncycle_t tCCD;
+    ncycle_t tCCD_L;
+    ncycle_t tCCD_S;
     ncycle_t tCMD;
     ncycle_t tCWD;
     ncycle_t tRAW;
@@ -149,14 +151,16 @@ class Params
     ncycle_t tREFW;
     ncycle_t tRFC;
     ncycle_t tRP;
-    ncycle_t tRRDR;
+    ncycle_t tRRDR_L;
+    ncycle_t tRRDR_S;
     ncycle_t tRRDW;
     ncycle_t tPPD;
     ncycle_t tRTP;
     ncycle_t tRTRS;
     ncycle_t tWP;
     ncycle_t tWR;
-    ncycle_t tWTR;
+    ncycle_t tWTR_L;
+    ncycle_t tWTR_S;
     ncycle_t tXP;
     ncycle_t tXPDLL;
     ncycle_t tXS;

@@ -392,23 +392,23 @@ bool DDR3Bank::Read( NVMainRequest *request )
     {
         nextPowerDown = MAX( nextPowerDown, 
                              GetEventQueue()->GetCurrentCycle() 
-                                 + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+                                 + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
                                  + p->tAL + p->tRTP + p->tRP );
     }
     else
     {
         nextPowerDown = MAX( nextPowerDown, 
-                             MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+                             MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
                              + GetEventQueue()->GetCurrentCycle() + p->tRDPDEN );
     }
 
     nextRead = MAX( nextRead, 
                     GetEventQueue()->GetCurrentCycle() 
-                        + MAX( p->tBURST, p->tCCD ) * request->burstCount );
+                        + MAX( p->tBURST, p->tCCD_L ) * request->burstCount );
 
     nextWrite = MAX( nextWrite, 
                      GetEventQueue()->GetCurrentCycle()
-                         + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+                         + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
                          + p->tCAS + p->tBURST + p->tRTRS - p->tCWD );
 
     /* issue READ/READ_RECHARGE to the target subarray */
@@ -477,7 +477,7 @@ bool DDR3Bank::Write( NVMainRequest *request )
     {
         nextPowerDown = MAX( nextActivate, 
                              GetEventQueue()->GetCurrentCycle()
-                             + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+                             + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
                              + p->tAL + p->tCWD + p->tBURST + p->tWR 
                              + p->tRP );
     }
@@ -485,18 +485,18 @@ bool DDR3Bank::Write( NVMainRequest *request )
     else
     {
         nextPowerDown = MAX( nextPowerDown, 
-                             MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+                             MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
                              + GetEventQueue()->GetCurrentCycle() + p->tWRPDEN );
     }
 
     nextRead = MAX( nextRead, 
                     GetEventQueue()->GetCurrentCycle() 
-                    + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
-                    + p->tCWD + p->tBURST + p->tWTR );
+                    + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+                    + p->tCWD + p->tBURST + p->tWTR_L );
 
     nextWrite = MAX( nextWrite, 
                      GetEventQueue()->GetCurrentCycle() 
-                     + MAX( p->tBURST, p->tCCD ) * request->burstCount );
+                     + MAX( p->tBURST, p->tCCD_L ) * request->burstCount );
 
     /* issue WRITE/WRITE_PRECHARGE to the target subarray */
     bool success = GetChild( request )->IssueCommand( request );

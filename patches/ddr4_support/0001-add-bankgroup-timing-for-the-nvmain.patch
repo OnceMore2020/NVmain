@@ -1,0 +1,632 @@
+diff --git a/Banks/CachedDDR3Bank/CachedDDR3Bank.cpp b/Banks/CachedDDR3Bank/CachedDDR3Bank.cpp
+index f717fe9..7694ee7 100644
+--- a/Banks/CachedDDR3Bank/CachedDDR3Bank.cpp
++++ b/Banks/CachedDDR3Bank/CachedDDR3Bank.cpp
+@@ -193,7 +193,7 @@ bool CachedDDR3Bank::Activate( NVMainRequest *request )
+     {
+         activateTimer += p->tRCD;                  /* Time for extra activate */
+         activateTimer -= p->tAL;                   /* Act -> Write time. */
+-        activateTimer += MAX( p->tBURST, p->tCCD ) /* Write time. */
++        activateTimer += MAX( p->tBURST, p->tCCD_L ) /* Write time. */
+                        * (dirtyCount - 1);
+         activateTimer += p->tAL + p->tCWD          /* Write + Write -> Precharge time. */
+                        + p->tBURST + p->tWR;
+@@ -202,7 +202,7 @@ bool CachedDDR3Bank::Activate( NVMainRequest *request )
+     }
+ 
+     activateTimer += p->tRCD;                       /* The activate issued to this method. */
+-    activateTimer += rowBufferSize * p->tCCD;       /* The time to read the selected row region. */
++    activateTimer += rowBufferSize * p->tCCD_L;       /* The time to read the selected row region. */
+ 
+     /* 
+      * Update timing constraints.
+@@ -210,8 +210,8 @@ bool CachedDDR3Bank::Activate( NVMainRequest *request )
+      * Assume we can write immediately after activate, and can read after one burst (Assumes 
+      * trigger request is prioritized...) 
+      */
+-    nextRead = MAX( nextRead, GetEventQueue()->GetCurrentCycle() + activateTimer - p->tAL - rowBufferSize * p->tCCD + p->tCCD );
+-    nextWrite = MAX( nextWrite, GetEventQueue()->GetCurrentCycle() + activateTimer - p->tAL - rowBufferSize * p->tCCD );
++    nextRead = MAX( nextRead, GetEventQueue()->GetCurrentCycle() + activateTimer - p->tAL - rowBufferSize * p->tCCD_L + p->tCCD_L );
++    nextWrite = MAX( nextWrite, GetEventQueue()->GetCurrentCycle() + activateTimer - p->tAL - rowBufferSize * p->tCCD_L );
+     /* Don't allow closing the row until the RDB is full. */
+     nextPrecharge = MAX( nextPrecharge, GetEventQueue()->GetCurrentCycle() + MAX(activateTimer, p->tRAS) );
+     nextPowerDown = MAX( nextPowerDown, GetEventQueue()->GetCurrentCycle() + MAX(activateTimer, p->tRAS) );
+diff --git a/Banks/DDR3Bank/DDR3Bank.cpp b/Banks/DDR3Bank/DDR3Bank.cpp
+index 0649a35..8d307c0 100644
+--- a/Banks/DDR3Bank/DDR3Bank.cpp
++++ b/Banks/DDR3Bank/DDR3Bank.cpp
+@@ -392,23 +392,23 @@ bool DDR3Bank::Read( NVMainRequest *request )
+     {
+         nextPowerDown = MAX( nextPowerDown, 
+                              GetEventQueue()->GetCurrentCycle() 
+-                                 + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++                                 + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+                                  + p->tAL + p->tRTP + p->tRP );
+     }
+     else
+     {
+         nextPowerDown = MAX( nextPowerDown, 
+-                             MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++                             MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+                              + GetEventQueue()->GetCurrentCycle() + p->tRDPDEN );
+     }
+ 
+     nextRead = MAX( nextRead, 
+                     GetEventQueue()->GetCurrentCycle() 
+-                        + MAX( p->tBURST, p->tCCD ) * request->burstCount );
++                        + MAX( p->tBURST, p->tCCD_L ) * request->burstCount );
+ 
+     nextWrite = MAX( nextWrite, 
+                      GetEventQueue()->GetCurrentCycle()
+-                         + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++                         + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+                          + p->tCAS + p->tBURST + p->tRTRS - p->tCWD );
+ 
+     /* issue READ/READ_RECHARGE to the target subarray */
+@@ -477,7 +477,7 @@ bool DDR3Bank::Write( NVMainRequest *request )
+     {
+         nextPowerDown = MAX( nextActivate, 
+                              GetEventQueue()->GetCurrentCycle()
+-                             + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++                             + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+                              + p->tAL + p->tCWD + p->tBURST + p->tWR 
+                              + p->tRP );
+     }
+@@ -485,18 +485,18 @@ bool DDR3Bank::Write( NVMainRequest *request )
+     else
+     {
+         nextPowerDown = MAX( nextPowerDown, 
+-                             MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++                             MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+                              + GetEventQueue()->GetCurrentCycle() + p->tWRPDEN );
+     }
+ 
+     nextRead = MAX( nextRead, 
+                     GetEventQueue()->GetCurrentCycle() 
+-                    + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+-                    + p->tCWD + p->tBURST + p->tWTR );
++                    + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
++                    + p->tCWD + p->tBURST + p->tWTR_L );
+ 
+     nextWrite = MAX( nextWrite, 
+                      GetEventQueue()->GetCurrentCycle() 
+-                     + MAX( p->tBURST, p->tCCD ) * request->burstCount );
++                     + MAX( p->tBURST, p->tCCD_L ) * request->burstCount );
+ 
+     /* issue WRITE/WRITE_PRECHARGE to the target subarray */
+     bool success = GetChild( request )->IssueCommand( request );
+diff --git a/Ranks/StandardRank/StandardRank.cpp b/Ranks/StandardRank/StandardRank.cpp
+index 6dce526..c218e34 100644
+--- a/Ranks/StandardRank/StandardRank.cpp
++++ b/Ranks/StandardRank/StandardRank.cpp
+@@ -109,6 +109,7 @@ void StandardRank::SetConfig( Config *c, bool createChildren )
+     busWidth = p->BusWidth;
+ 
+     banksPerRefresh = p->BanksPerRefresh;
++    bankgroupNum = p->BANKGROUPS;
+ 
+     if( conf->GetValue( "RAW" ) == -1 )
+     {
+@@ -174,9 +175,16 @@ void StandardRank::SetConfig( Config *c, bool createChildren )
+         lastActivate[i] = 0;
+ 
+     /* We'll say you can't do anything until the command has time to issue on the bus. */
+-    nextRead = p->tCMD;
+-    nextWrite = p->tCMD;
+-    nextActivate = p->tCMD;
++    for (ncounter_t i = 0; i < bankgroupNum; i++)
++    {
++        sbg_nextRead[i] = p->tCMD;
++        sbg_nextWrite[i] = p->tCMD;
++        sbg_nextActivate[i] = p->tCMD;
++    }
++
++    dbg_nextRead = p->tCMD;
++    dbg_nextWrite = p->tCMD;
++    dbg_nextActivate = p->tCMD;
+     nextPrecharge = p->tCMD;
+ 
+     fawWaits = 0;
+@@ -266,7 +274,7 @@ bool StandardRank::Activate( NVMainRequest *request )
+      *  Ensure that the time since the last bank activation is >= tRRD. This is to limit
+      *  power consumption.
+      */
+-    if( nextActivate <= GetEventQueue()->GetCurrentCycle() 
++    if( MAX(sbg_nextActivate[activateBank % bankgroupNum], dbg_nextActivate ) <= GetEventQueue()->GetCurrentCycle() 
+         && lastActivate[( RAWindex + 1 ) % rawNum] + p->tRAW 
+             <= GetEventQueue( )->GetCurrentCycle( ) )
+     {
+@@ -279,8 +287,10 @@ bool StandardRank::Activate( NVMainRequest *request )
+         /* move to the next counter */
+         RAWindex = (RAWindex + 1) % rawNum;
+         lastActivate[RAWindex] = GetEventQueue()->GetCurrentCycle();
+-        nextActivate = MAX( nextActivate, 
+-                            GetEventQueue()->GetCurrentCycle() + p->tRRDR );
++        sbg_nextActivate[activateBank % bankgroupNum] = MAX( sbg_nextActivate[activateBank % bankgroupNum],
++                            GetEventQueue()->GetCurrentCycle() + p->tRRDR_L );
++        dbg_nextActivate = MAX( dbg_nextActivate, 
++                            GetEventQueue()->GetCurrentCycle() + p->tRRDR_S );
+     }
+     else
+     {
+@@ -304,7 +314,7 @@ bool StandardRank::Read( NVMainRequest *request )
+         return false;
+     }
+ 
+-    if( nextRead > GetEventQueue()->GetCurrentCycle() )
++    if( MAX(sbg_nextRead[readBank % bankgroupNum], dbg_nextRead) > GetEventQueue()->GetCurrentCycle() )
+     {
+         std::cerr << "NVMain Error: Rank Read violates the timing constraint: " 
+             << readBank << "!" << std::endl;
+@@ -315,13 +325,21 @@ bool StandardRank::Read( NVMainRequest *request )
+     bool success = GetChild( request )->IssueCommand( request );
+ 
+     /* Even though the command may be READ_PRECHARGE, it still works */
+-    nextRead = MAX( nextRead, 
++    sbg_nextRead[readBank % bankgroupNum] = MAX( sbg_nextRead[readBank % bankgroupNum],
++                    GetEventQueue()->GetCurrentCycle()
++                        + MAX( p->tBURST, p->tCCD_L));
++    
++    sbg_nextWrite[readBank % bankgroupNum] = MAX( sbg_nextWrite[readBank % bankgroupNum],
++                    GetEventQueue()->GetCurrentCycle()
++                        + p->tCAS + p->tBURST + p->tRTRS - p->tCWD);
++
++    dbg_nextRead = MAX( dbg_nextRead, 
+                     GetEventQueue()->GetCurrentCycle() 
+-                    + MAX( p->tBURST, p->tCCD ) * request->burstCount );
++                    + MAX( p->tBURST, p->tCCD_S ) * request->burstCount );
+ 
+-    nextWrite = MAX( nextWrite, 
++    dbg_nextWrite = MAX( dbg_nextWrite, 
+                      GetEventQueue()->GetCurrentCycle() 
+-                     + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++                     + MAX( p->tBURST, p->tCCD_S ) * (request->burstCount - 1)
+                      + p->tCAS + p->tBURST + p->tRTRS - p->tCWD ); 
+ 
+     /* if it has implicit precharge, insert the precharge to close the rank */ 
+@@ -332,7 +350,7 @@ bool StandardRank::Read( NVMainRequest *request )
+         dupPRE->owner = this;
+ 
+         GetEventQueue( )->InsertEvent( EventResponse, this, dupPRE, 
+-            MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++            MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+             + GetEventQueue( )->GetCurrentCycle( ) + p->tAL + p->tRTP );
+     }
+ 
+@@ -359,7 +377,7 @@ bool StandardRank::Write( NVMainRequest *request )
+         return false;
+     }
+ 
+-    if( nextWrite > GetEventQueue()->GetCurrentCycle() )
++    if( MAX(sbg_nextWrite[writeBank % bankgroupNum], dbg_nextWrite) > GetEventQueue()->GetCurrentCycle() )
+     {
+         std::cerr << "NVMain Error: Rank Write violates the timing constraint: " 
+             << writeBank << "!" << std::endl;
+@@ -370,14 +388,22 @@ bool StandardRank::Write( NVMainRequest *request )
+     bool success = GetChild( request )->IssueCommand( request );
+ 
+     /* Even though the command may be WRITE_PRECHARGE, it still works */
+-    nextRead = MAX( nextRead, 
++    sbg_nextRead[writeBank % bankgroupNum] = MAX( sbg_nextRead[writeBank % bankgroupNum],
++                    GetEventQueue()->GetCurrentCycle()
++                        + p->tCWD + p->tBURST + p->tWTR_L );
++    
++    sbg_nextWrite[writeBank % bankgroupNum] = MAX( sbg_nextWrite[writeBank % bankgroupNum],
++                    GetEventQueue()->GetCurrentCycle()
++                        + MAX(p->tBURST, p->tCCD_L));
++
++    dbg_nextRead = MAX( dbg_nextRead, 
+                     GetEventQueue()->GetCurrentCycle() 
+-                    + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++                    + MAX( p->tBURST, p->tCCD_S ) * (request->burstCount - 1)
+                     + p->tCWD + p->tBURST + p->tWTR );
+ 
+-    nextWrite = MAX( nextWrite, 
++    dbg_nextWrite = MAX( dbg_nextWrite, 
+                      GetEventQueue()->GetCurrentCycle() 
+-                     + MAX( p->tBURST, p->tCCD ) * request->burstCount );
++                     + MAX( p->tBURST, p->tCCD_S ) * request->burstCount );
+ 
+     /* if it has implicit precharge, insert the precharge to close the rank */ 
+     if( request->type == WRITE_PRECHARGE )
+@@ -388,7 +414,7 @@ bool StandardRank::Write( NVMainRequest *request )
+ 
+         GetEventQueue( )->InsertEvent( EventResponse, this, dupPRE, 
+                         GetEventQueue( )->GetCurrentCycle( ) 
+-                        + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++                        + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+                         + p->tAL + p->tCWD + p->tBURST + p->tWR );
+     }
+ 
+@@ -574,8 +600,10 @@ bool StandardRank::PowerUp( NVMainRequest *request )
+  */
+ bool StandardRank::Refresh( NVMainRequest *request )
+ {
+-    assert( nextActivate <= ( GetEventQueue()->GetCurrentCycle() ) );
++    // assert( nextActivate <= ( GetEventQueue()->GetCurrentCycle() ) );
+     uint64_t refreshBankGroupHead;
++    uint64_t i;
++
+     request->address.GetTranslatedAddress( 
+             NULL, NULL, &refreshBankGroupHead, NULL, NULL, NULL );
+ 
+@@ -598,8 +626,14 @@ bool StandardRank::Refresh( NVMainRequest *request )
+      * simply treat the REFRESH as an ACTIVATE. For a finer refresh
+      * granularity, the nextActivate does not block the other bank groups
+      */
+-    nextActivate = MAX( nextActivate, GetEventQueue( )->GetCurrentCycle( ) 
+-                                        + p->tRRDR );
++    for (i=refreshBankGroupHead; i < refreshBankGroupHead + banksPerRefresh; i++)
++    {
++        sbg_nextActivate[i % bankgroupNum] = MAX(sbg_nextActivate[i % bankgroupNum], GetEventQueue()->GetCurrentCycle()
++                                                + p->tRRDR_L);
++    }
++
++    dbg_nextActivate = MAX( dbg_nextActivate, GetEventQueue( )->GetCurrentCycle( ) 
++                                        + p->tRRDR_L );
+     RAWindex = (RAWindex + 1) % rawNum;
+     lastActivate[RAWindex] = GetEventQueue( )->GetCurrentCycle( );
+ 
+@@ -613,9 +647,9 @@ ncycle_t StandardRank::NextIssuable( NVMainRequest *request )
+ 
+     request->address.GetTranslatedAddress( NULL, NULL, &bank, NULL, NULL, NULL );
+ 
+-    if( request->type == ACTIVATE || request->type == REFRESH ) nextCompare = MAX( nextActivate, lastActivate[(RAWindex+1)%rawNum] + p->tRAW );
+-    else if( request->type == READ || request->type == READ_PRECHARGE ) nextCompare = nextRead;
+-    else if( request->type == WRITE || request->type == WRITE_PRECHARGE ) nextCompare = nextWrite;
++    if( request->type == ACTIVATE || request->type == REFRESH ) nextCompare = MAX( MAX(sbg_nextActivate[bank % bankgroupNum], dbg_nextActivate), lastActivate[(RAWindex+1)%rawNum] + p->tRAW );
++    else if( request->type == READ || request->type == READ_PRECHARGE ) nextCompare = MAX(sbg_nextRead[bank % bankgroupNum], dbg_nextRead);
++    else if( request->type == WRITE || request->type == WRITE_PRECHARGE ) nextCompare = MAX(sbg_nextWrite[bank % bankgroupNum], dbg_nextWrite);
+     else if( request->type == PRECHARGE || request->type == PRECHARGE_ALL ) nextCompare = nextPrecharge;
+     else assert(false);
+         
+@@ -633,7 +667,7 @@ bool StandardRank::IsIssuable( NVMainRequest *req, FailReason *reason )
+ 
+     if( req->type == ACTIVATE )
+     {
+-        if( nextActivate > GetEventQueue( )->GetCurrentCycle( ) 
++        if( MAX(sbg_nextActivate[opBank % bankgroupNum], dbg_nextActivate) > GetEventQueue( )->GetCurrentCycle( ) 
+             || ( lastActivate[(RAWindex + 1) % rawNum] + p->tRAW ) 
+                 > GetEventQueue()->GetCurrentCycle() )  
+         {
+@@ -649,18 +683,18 @@ bool StandardRank::IsIssuable( NVMainRequest *req, FailReason *reason )
+ 
+         if( rv == false )
+         {
+-            if( nextActivate > GetEventQueue( )->GetCurrentCycle( ) )
++            if( MAX(sbg_nextActivate[opBank % bankgroupNum], sbg_nextActivate) > GetEventQueue( )->GetCurrentCycle( ) )
+             {
+                 actWaits++;
+-                actWaitTotal += nextActivate - GetEventQueue( )->GetCurrentCycle( );
++                actWaitTotal += sbg_nextActivate[opBank % bankgroupNum] - GetEventQueue( )->GetCurrentCycle( );
+             }
+ 
+-            if( ( lastActivate[RAWindex] + p->tRRDR )
++            if( ( lastActivate[RAWindex] + p->tRRDR_L )
+                     > GetEventQueue( )->GetCurrentCycle( ) ) 
+             {
+                 rrdWaits++;
+                 rrdWaitTotal += ( lastActivate[RAWindex] + 
+-                        p->tRRDR - (GetEventQueue()->GetCurrentCycle()) );
++                        p->tRRDR_L - (GetEventQueue()->GetCurrentCycle()) );
+             }
+             if( ( lastActivate[( RAWindex + 1 ) % rawNum] + p->tRAW )
+                     > GetEventQueue( )->GetCurrentCycle( ) ) 
+@@ -673,7 +707,7 @@ bool StandardRank::IsIssuable( NVMainRequest *req, FailReason *reason )
+     }
+     else if( req->type == READ || req->type == READ_PRECHARGE )
+     {
+-        if( nextRead > GetEventQueue( )->GetCurrentCycle( ) )
++        if( MAX(sbg_nextRead[opBank % bankgroupNum], dbg_nextRead) > GetEventQueue( )->GetCurrentCycle( ) )
+         {
+             rv = false;
+ 
+@@ -687,7 +721,7 @@ bool StandardRank::IsIssuable( NVMainRequest *req, FailReason *reason )
+     }
+     else if( req->type == WRITE || req->type == WRITE_PRECHARGE )
+     {
+-        if( nextWrite > GetEventQueue( )->GetCurrentCycle( ) )
++        if( MAX(sbg_nextWrite[opBank % bankgroupNum], dbg_nextWrite) > GetEventQueue( )->GetCurrentCycle( ) )
+         {
+             rv = false;
+ 
+@@ -731,8 +765,14 @@ bool StandardRank::IsIssuable( NVMainRequest *req, FailReason *reason )
+     }
+     else if( req->type == REFRESH )
+     {
++        ncycle_t maxCycle = 0;
++
++        for (ncounter_t i = 0; i < banksPerRefresh; i++)
++        {
++            maxCycle = MAX(sbg_nextActivate[i % bankgroupNum], maxCycle);
++        }
+         /* firstly, check whether REFRESH can be issued to a rank */
+-        if( nextActivate > GetEventQueue()->GetCurrentCycle() 
++        if( maxCycle > GetEventQueue()->GetCurrentCycle() 
+             || ( lastActivate[( RAWindex + 1 ) % rawNum] + p->tRAW 
+                 > GetEventQueue( )->GetCurrentCycle( ) )  )
+         {
+@@ -830,22 +870,42 @@ bool StandardRank::IssueCommand( NVMainRequest *req )
+ void StandardRank::Notify( NVMainRequest *request )
+ {
+     OpType op = request->type;
++    ncounter_t i;
+ 
+     /* We only care if other ranks are reading/writing (to avoid bus contention) */
+     if( op == READ || op == READ_PRECHARGE )
+     {
+-        nextRead = MAX( nextRead, GetEventQueue()->GetCurrentCycle() 
++        for (i=0; i < bankgroupNum; i++)
++        {
++            sbg_nextRead[i] = MAX(sbg_nextRead[i], GetEventQueue()->GetCurrentCycle()
++                                    + p->tBURST + p->tRTRS );
++            
++            sbg_nextWrite[i] = MAX(sbg_nextWrite[i], GetEventQueue()->GetCurrentCycle()
++                                    + p->tCAS + p->tBURST + p->tRTRS - p->tCWD);
++        }
++
++        dbg_nextRead = MAX( dbg_nextRead, GetEventQueue()->GetCurrentCycle() 
+                                     + p->tBURST + p->tRTRS );
+ 
+-        nextWrite = MAX( nextWrite, GetEventQueue()->GetCurrentCycle() 
++        dbg_nextWrite = MAX( dbg_nextWrite, GetEventQueue()->GetCurrentCycle() 
+                                     + p->tCAS + p->tBURST + p->tRTRS - p->tCWD);
+     }
+     else if( op == WRITE || op == WRITE_PRECHARGE )
+     {
+-        nextWrite = MAX( nextWrite, GetEventQueue()->GetCurrentCycle() 
++        for(i=0; i < bankgroupNum; i++)
++        {
++            sbg_nextWrite[i] = MAX(sbg_nextWrite[i], GetEventQueue()->GetCurrentCycle()
++                                    + p->tBURST + p->tOST);
++        }
++        dbg_nextWrite = MAX( dbg_nextWrite, GetEventQueue()->GetCurrentCycle() 
+                                     + p->tBURST + p->tOST );
+ 
+-        nextRead = MAX( nextRead, GetEventQueue()->GetCurrentCycle()
++        for (i = 0; i < bankgroupNum; i++)
++        {
++            sbg_nextRead[i] = MAX(sbg_nextRead[i], GetEventQueue()->GetCurrentCycle()
++                                    + p->tBURST + p->tCWD + p->tRTRS - p->tCAS);
++        }
++        dbg_nextRead = MAX( dbg_nextRead, GetEventQueue()->GetCurrentCycle()
+                                     + p->tBURST + p->tCWD + p->tRTRS - p->tCAS );
+     }
+ }
+diff --git a/Ranks/StandardRank/StandardRank.h b/Ranks/StandardRank/StandardRank.h
+index 3d766c5..050ba12 100644
+--- a/Ranks/StandardRank/StandardRank.h
++++ b/Ranks/StandardRank/StandardRank.h
+@@ -100,6 +100,7 @@ class StandardRank : public Rank
+     StandardRank_State state;
+ 
+     ncounter_t bankCount;
++    ncounter_t bankgroupNum;
+     ncounter_t deviceWidth;
+     ncounter_t deviceCount;
+     ncounter_t busWidth;
+@@ -108,9 +109,13 @@ class StandardRank : public Rank
+     ncounter_t rawNum;
+     ncounter_t banksPerRefresh;
+ 
+-    ncycle_t nextRead;
+-    ncycle_t nextWrite;
+-    ncycle_t nextActivate;
++    ncycle_t sbg_nextRead[16];
++    ncycle_t sbg_nextWrite[16];
++    ncycle_t sbg_nextActivate[16];
++    ncycle_t dbg_nextRead;
++    ncycle_t dbg_nextWrite;
++    ncycle_t dbg_nextActivate;
++
+     ncycle_t nextPrecharge;
+ 
+     ncounter_t activeCycles;
+diff --git a/src/Params.cpp b/src/Params.cpp
+index 32df03f..ee88453 100644
+--- a/src/Params.cpp
++++ b/src/Params.cpp
+@@ -136,7 +136,8 @@ Params::Params( )
+     tAL = 0;
+     tBURST = 4;
+     tCAS = 10;
+-    tCCD = 4;
++    tCCD_S = 4;
++    tCCD_L = 7;
+     tCMD = 1;
+     tCWD = 7;
+     tRAW = 20;
+@@ -148,14 +149,16 @@ Params::Params( )
+     tREFW = 42666667;
+     tRFC = 107;
+     tRP = 9;
+-    tRRDR = 5;
++    tRRDR_S = 5;
++    tRRDR_L = 7;
+     tRRDW = 5;
+     tPPD = 0;
+     tRTP = 5;
+     tRTRS = 1;
+     tWP = 0;
+     tWR = 10;
+-    tWTR = 5;
++    tWTR_L = 10;
++    tWTR_S = 3;
+     tXP = 6;
+     tXPDLL = 17;
+     tXS = 5;
+@@ -319,6 +322,7 @@ void Params::SetParams( Config *c )
+     c->GetValueUL( "CHANNELS", CHANNELS );
+     c->GetValueUL( "RANKS", RANKS );
+     c->GetValueUL( "BANKS", BANKS );
++    c->GetValueUL( "BANKGROUPS", BANKGROUPS );
+     c->GetValueUL( "RAW", RAW );
+     c->GetValueUL( "MATHeight", MATHeight );
+     c->GetValueUL( "RBSize", RBSize );
+@@ -326,7 +330,8 @@ void Params::SetParams( Config *c )
+     ConvertTiming( c, "tAL", tAL );
+     ConvertTiming( c, "tBURST", tBURST );
+     ConvertTiming( c, "tCAS", tCAS );
+-    ConvertTiming( c, "tCCD", tCCD );
++    ConvertTiming( c, "tCCD_L", tCCD_L );
++    ConvertTiming( c, "tCCD_S", tCCD_S );
+     ConvertTiming( c, "tCMD", tCMD );
+     ConvertTiming( c, "tCWD", tCWD );
+     ConvertTiming( c, "tRAW", tRAW );
+@@ -338,14 +343,16 @@ void Params::SetParams( Config *c )
+     ConvertTiming( c, "tREFW", tREFW );
+     ConvertTiming( c, "tRFC", tRFC );
+     ConvertTiming( c, "tRP", tRP );
+-    ConvertTiming( c, "tRRDR", tRRDR );
++    ConvertTiming( c, "tRRDR_L", tRRDR_L );
++    ConvertTiming( c, "tRRDR_S", tRRDR_S );
+     ConvertTiming( c, "tRRDW", tRRDW );
+     ConvertTiming( c, "tPPD", tPPD );
+     ConvertTiming( c, "tRTP", tRTP );
+     ConvertTiming( c, "tRTRS", tRTRS );
+     ConvertTiming( c, "tWP", tWP );
+     ConvertTiming( c, "tWR", tWR );
+-    ConvertTiming( c, "tWTR", tWTR );
++    ConvertTiming( c, "tWTR_L", tWTR_L );
++    ConvertTiming( c, "tWTR_S", tWTR_S );
+     ConvertTiming( c, "tXP", tXP );
+     ConvertTiming( c, "tXPDLL", tXPDLL );
+     ConvertTiming( c, "tXS", tXS );
+diff --git a/src/Params.h b/src/Params.h
+index 91129be..c8eb255 100644
+--- a/src/Params.h
++++ b/src/Params.h
+@@ -130,6 +130,7 @@ class Params
+     ncounter_t CHANNELS;
+     ncounter_t RANKS;
+     ncounter_t BANKS;
++    ncounter_t BANKGROUPS;
+     ncounter_t RAW;
+     ncounter_t MATHeight;
+     ncounter_t RBSize;
+@@ -137,7 +138,8 @@ class Params
+     ncycle_t tAL;
+     ncycle_t tBURST;
+     ncycle_t tCAS;
+-    ncycle_t tCCD;
++    ncycle_t tCCD_L;
++    ncycle_t tCCD_S;
+     ncycle_t tCMD;
+     ncycle_t tCWD;
+     ncycle_t tRAW;
+@@ -149,14 +151,16 @@ class Params
+     ncycle_t tREFW;
+     ncycle_t tRFC;
+     ncycle_t tRP;
+-    ncycle_t tRRDR;
++    ncycle_t tRRDR_L;
++    ncycle_t tRRDR_S;
+     ncycle_t tRRDW;
+     ncycle_t tPPD;
+     ncycle_t tRTP;
+     ncycle_t tRTRS;
+     ncycle_t tWP;
+     ncycle_t tWR;
+-    ncycle_t tWTR;
++    ncycle_t tWTR_L;
++    ncycle_t tWTR_S;
+     ncycle_t tXP;
+     ncycle_t tXPDLL;
+     ncycle_t tXS;
+diff --git a/src/SubArray.cpp b/src/SubArray.cpp
+index 536a860..18fc063 100644
+--- a/src/SubArray.cpp
++++ b/src/SubArray.cpp
+@@ -396,7 +396,7 @@ bool SubArray::Read( NVMainRequest *request )
+     {
+         nextActivate = MAX( nextActivate, 
+                             GetEventQueue()->GetCurrentCycle()
+-                                + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++                                + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+                                 + p->tAL + p->tRTP + p->tRP + decLat );
+ 
+         nextPrecharge = MAX( nextPrecharge, nextActivate );
+@@ -410,29 +410,29 @@ bool SubArray::Read( NVMainRequest *request )
+         /* insert the event to issue the implicit precharge */ 
+         GetEventQueue( )->InsertEvent( EventResponse, this, preReq, 
+                         GetEventQueue()->GetCurrentCycle() + p->tAL + p->tRTP + decLat
+-                        + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1) );
++                        + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1) );
+     }
+     else
+     {
+         nextPrecharge = MAX( nextPrecharge, 
+                              GetEventQueue()->GetCurrentCycle() 
+-                                 + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+-                                 + p->tAL + p->tBURST + p->tRTP - p->tCCD + decLat );
++                                 + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
++                                 + p->tAL + p->tBURST + p->tRTP - p->tCCD_L + decLat );
+ 
+         nextRead = MAX( nextRead, 
+                         GetEventQueue()->GetCurrentCycle() 
+-                            + MAX( p->tBURST, p->tCCD ) * request->burstCount );
++                            + MAX( p->tBURST, p->tCCD_L ) * request->burstCount );
+ 
+         nextWrite = MAX( nextWrite, 
+                          GetEventQueue()->GetCurrentCycle() 
+-                             + MAX( p->tBURST, p->tCCD ) * (request->burstCount  - 1)
++                             + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount  - 1)
+                              + p->tCAS + p->tBURST + p->tRTRS - p->tCWD + decLat );
+     }
+ 
+     /* Read->Powerdown is typical the same for READ and READ_PRECHARGE. */
+     nextPowerDown = MAX( nextPowerDown,
+                          GetEventQueue()->GetCurrentCycle()
+-                            + MAX( p->tBURST, p->tCCD ) * (request->burstCount  - 1)
++                            + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount  - 1)
+                             + p->tCAS + p->tAL + p->tBURST + 1 + decLat );
+ 
+     /*
+@@ -605,7 +605,7 @@ bool SubArray::Write( NVMainRequest *request )
+     {
+         nextActivate = MAX( nextActivate, 
+                             GetEventQueue()->GetCurrentCycle()
+-                            + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++                            + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+                             + p->tAL + p->tCWD + p->tBURST 
+                             + writeTimer + p->tWR + p->tRP );
+ 
+@@ -621,24 +621,24 @@ bool SubArray::Write( NVMainRequest *request )
+         /* insert the event to issue the implicit precharge */ 
+         GetEventQueue( )->InsertEvent( EventResponse, this, preReq, 
+             GetEventQueue()->GetCurrentCycle() 
+-            + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++            + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+             + p->tAL + p->tCWD + p->tBURST + writeTimer + p->tWR );
+     }
+     else
+     {
+         nextPrecharge = MAX( nextPrecharge, 
+                              GetEventQueue()->GetCurrentCycle() 
+-                             + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
++                             + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
+                              + p->tAL + p->tCWD + p->tBURST + writeTimer + p->tWR );
+ 
+         nextRead = MAX( nextRead, 
+                         GetEventQueue()->GetCurrentCycle() 
+-                        + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+-                        + p->tCWD + p->tBURST + p->tWTR + writeTimer );
++                        + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
++                        + p->tCWD + p->tBURST + p->tWTR_L + writeTimer );
+ 
+         nextWrite = MAX( nextWrite, 
+                          GetEventQueue()->GetCurrentCycle() 
+-                         + MAX( p->tBURST, p->tCCD ) * request->burstCount + writeTimer );
++                         + MAX( p->tBURST, p->tCCD_L ) * request->burstCount + writeTimer );
+     }
+ 
+     nextPowerDown = MAX( nextPowerDown, nextPrecharge );
+@@ -650,7 +650,7 @@ bool SubArray::Write( NVMainRequest *request )
+     writeStart = GetEventQueue()->GetCurrentCycle();
+     writeEnd = GetEventQueue()->GetCurrentCycle() + writeTimer;
+     writeEventTime = GetEventQueue()->GetCurrentCycle() + p->tCWD 
+-                     + MAX( p->tBURST, p->tCCD ) * request->burstCount + writeTimer;
++                     + MAX( p->tBURST, p->tCCD_L ) * request->burstCount + writeTimer;
+ 
+     /* The parent has our hook in the children list, we need to find this. */
+     std::vector<NVMObject_hook *>& children = GetParent( )->GetTrampoline( )->GetChildren( );
