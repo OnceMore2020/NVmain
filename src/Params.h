@@ -134,6 +134,7 @@ class Params
     ncounter_t RAW;
     ncounter_t MATHeight;
     ncounter_t RBSize;
+    ncounter_t LogLevel;
 
     ncycle_t tAL;
     ncycle_t tBURST;

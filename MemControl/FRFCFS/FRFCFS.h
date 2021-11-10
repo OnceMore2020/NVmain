@@ -68,6 +68,7 @@ class FRFCFS : public MemoryController
     uint64_t mem_reads, mem_writes;
     uint64_t rb_hits;
     uint64_t rb_miss;
+    uint64_t LogLevel;
     uint64_t starvation_precharges;
     uint64_t write_pauses;
 };
