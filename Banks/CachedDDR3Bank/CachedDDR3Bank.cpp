@@ -193,7 +193,7 @@ bool CachedDDR3Bank::Activate( NVMainRequest *request )
     {
         activateTimer += p->tRCD;                  /* Time for extra activate */
         activateTimer -= p->tAL;                   /* Act -> Write time. */
-        activateTimer += MAX( p->tBURST, p->tCCD ) /* Write time. */
+        activateTimer += MAX( p->tBURST, p->tCCD_L ) /* Write time. */
                        * (dirtyCount - 1);
         activateTimer += p->tAL + p->tCWD          /* Write + Write -> Precharge time. */
                        + p->tBURST + p->tWR;
@@ -202,7 +202,7 @@ bool CachedDDR3Bank::Activate( NVMainRequest *request )
     }
 
     activateTimer += p->tRCD;                       /* The activate issued to this method. */
-    activateTimer += rowBufferSize * p->tCCD;       /* The time to read the selected row region. */
+    activateTimer += rowBufferSize * p->tCCD_L;       /* The time to read the selected row region. */
 
     /* 
      * Update timing constraints.
@@ -210,8 +210,8 @@ bool CachedDDR3Bank::Activate( NVMainRequest *request )
      * Assume we can write immediately after activate, and can read after one burst (Assumes 
      * trigger request is prioritized...) 
      */
-    nextRead = MAX( nextRead, GetEventQueue()->GetCurrentCycle() + activateTimer - p->tAL - rowBufferSize * p->tCCD + p->tCCD );
-    nextWrite = MAX( nextWrite, GetEventQueue()->GetCurrentCycle() + activateTimer - p->tAL - rowBufferSize * p->tCCD );
+    nextRead = MAX( nextRead, GetEventQueue()->GetCurrentCycle() + activateTimer - p->tAL - rowBufferSize * p->tCCD_L + p->tCCD_L );
+    nextWrite = MAX( nextWrite, GetEventQueue()->GetCurrentCycle() + activateTimer - p->tAL - rowBufferSize * p->tCCD_L );
     /* Don't allow closing the row until the RDB is full. */
     nextPrecharge = MAX( nextPrecharge, GetEventQueue()->GetCurrentCycle() + MAX(activateTimer, p->tRAS) );
     nextPowerDown = MAX( nextPowerDown, GetEventQueue()->GetCurrentCycle() + MAX(activateTimer, p->tRAS) );

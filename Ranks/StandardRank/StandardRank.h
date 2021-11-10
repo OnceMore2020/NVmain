@@ -100,6 +100,7 @@ class StandardRank : public Rank
     StandardRank_State state;
 
     ncounter_t bankCount;
+    ncounter_t bankgroupNum;
     ncounter_t deviceWidth;
     ncounter_t deviceCount;
     ncounter_t busWidth;
@@ -108,9 +109,13 @@ class StandardRank : public Rank
     ncounter_t rawNum;
     ncounter_t banksPerRefresh;
 
-    ncycle_t nextRead;
-    ncycle_t nextWrite;
-    ncycle_t nextActivate;
+    ncycle_t sbg_nextRead[16];
+    ncycle_t sbg_nextWrite[16];
+    ncycle_t sbg_nextActivate[16];
+    ncycle_t dbg_nextRead;
+    ncycle_t dbg_nextWrite;
+    ncycle_t dbg_nextActivate;
+
     ncycle_t nextPrecharge;
 
     ncounter_t activeCycles;

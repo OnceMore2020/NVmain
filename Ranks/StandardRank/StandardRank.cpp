@@ -109,6 +109,7 @@ void StandardRank::SetConfig( Config *c, bool createChildren )
     busWidth = p->BusWidth;
 
     banksPerRefresh = p->BanksPerRefresh;
+    bankgroupNum = p->BANKGROUPS;
 
     if( conf->GetValue( "RAW" ) == -1 )
     {
@@ -174,9 +175,17 @@ void StandardRank::SetConfig( Config *c, bool createChildren )
         lastActivate[i] = 0;
 
     /* We'll say you can't do anything until the command has time to issue on the bus. */
-    nextRead = p->tCMD;
-    nextWrite = p->tCMD;
-    nextActivate = p->tCMD;
+
+    for (ncounter_t i = 0; i < bankgroupNum; i++)
+    {
+        sbg_nextRead[i] = p->tCMD;
+        sbg_nextWrite[i] = p->tCMD;
+        sbg_nextActivate[i] = p->tCMD;
+    }
+
+    dbg_nextRead = p->tCMD;
+    dbg_nextWrite = p->tCMD;
+    dbg_nextActivate = p->tCMD;
     nextPrecharge = p->tCMD;
 
     fawWaits = 0;
@@ -266,7 +275,7 @@ bool StandardRank::Activate( NVMainRequest *request )
      *  Ensure that the time since the last bank activation is >= tRRD. This is to limit
      *  power consumption.
      */
-    if( nextActivate <= GetEventQueue()->GetCurrentCycle() 
+    if( MAX(sbg_nextActivate[activateBank % bankgroupNum], dbg_nextActivate ) <= GetEventQueue()->GetCurrentCycle() 
         && lastActivate[( RAWindex + 1 ) % rawNum] + p->tRAW 
             <= GetEventQueue( )->GetCurrentCycle( ) )
     {
@@ -279,8 +288,11 @@ bool StandardRank::Activate( NVMainRequest *request )
         /* move to the next counter */
         RAWindex = (RAWindex + 1) % rawNum;
         lastActivate[RAWindex] = GetEventQueue()->GetCurrentCycle();
-        nextActivate = MAX( nextActivate, 
-                            GetEventQueue()->GetCurrentCycle() + p->tRRDR );
+        sbg_nextActivate[activateBank % bankgroupNum] = MAX( sbg_nextActivate[activateBank % bankgroupNum],
+                            GetEventQueue()->GetCurrentCycle() + p->tRRDR_L );
+
+        dbg_nextActivate = MAX( dbg_nextActivate, 
+                            GetEventQueue()->GetCurrentCycle() + p->tRRDR_S );
     }
     else
     {
@@ -304,7 +316,7 @@ bool StandardRank::Read( NVMainRequest *request )
         return false;
     }
 
-    if( nextRead > GetEventQueue()->GetCurrentCycle() )
+    if( MAX(sbg_nextRead[readBank % bankgroupNum], dbg_nextRead) > GetEventQueue()->GetCurrentCycle() )
     {
         std::cerr << "NVMain Error: Rank Read violates the timing constraint: " 
             << readBank << "!" << std::endl;
@@ -315,14 +327,23 @@ bool StandardRank::Read( NVMainRequest *request )
     bool success = GetChild( request )->IssueCommand( request );
 
     /* Even though the command may be READ_PRECHARGE, it still works */
-    nextRead = MAX( nextRead, 
-                    GetEventQueue()->GetCurrentCycle() 
-                    + MAX( p->tBURST, p->tCCD ) * request->burstCount );
+    sbg_nextRead[readBank % bankgroupNum] = MAX( sbg_nextRead[readBank % bankgroupNum],
+                    GetEventQueue()->GetCurrentCycle()
+                        + MAX( p->tBURST, p->tCCD_L));
+    
+    sbg_nextWrite[readBank % bankgroupNum] = MAX( sbg_nextWrite[readBank % bankgroupNum],
+                    GetEventQueue()->GetCurrentCycle()
+                        + p->tCAS + p->tBURST + p->tRTRS - p->tCWD);
 
-    nextWrite = MAX( nextWrite, 
+    dbg_nextRead = MAX( dbg_nextRead, 
+                    GetEventQueue()->GetCurrentCycle() 
+                    + MAX( p->tBURST, p->tCCD_S ) * request->burstCount );
+
+    dbg_nextWrite = MAX( dbg_nextWrite, 
                      GetEventQueue()->GetCurrentCycle() 
-                     + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+                     + MAX( p->tBURST, p->tCCD_S ) * (request->burstCount - 1)
                      + p->tCAS + p->tBURST + p->tRTRS - p->tCWD ); 
+
 
     /* if it has implicit precharge, insert the precharge to close the rank */ 
     if( request->type == READ_PRECHARGE )
@@ -332,7 +353,7 @@ bool StandardRank::Read( NVMainRequest *request )
         dupPRE->owner = this;
 
         GetEventQueue( )->InsertEvent( EventResponse, this, dupPRE, 
-            MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+            MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
             + GetEventQueue( )->GetCurrentCycle( ) + p->tAL + p->tRTP );
     }
 
@@ -359,7 +380,7 @@ bool StandardRank::Write( NVMainRequest *request )
         return false;
     }
 
-    if( nextWrite > GetEventQueue()->GetCurrentCycle() )
+    if( MAX(sbg_nextWrite[writeBank % bankgroupNum], dbg_nextWrite) > GetEventQueue()->GetCurrentCycle() )
     {
         std::cerr << "NVMain Error: Rank Write violates the timing constraint: " 
             << writeBank << "!" << std::endl;
@@ -370,14 +391,23 @@ bool StandardRank::Write( NVMainRequest *request )
     bool success = GetChild( request )->IssueCommand( request );
 
     /* Even though the command may be WRITE_PRECHARGE, it still works */
-    nextRead = MAX( nextRead, 
+    sbg_nextRead[writeBank % bankgroupNum] = MAX( sbg_nextRead[writeBank % bankgroupNum],
+                    GetEventQueue()->GetCurrentCycle()
+                        + p->tCWD + p->tBURST + p->tWTR_L );
+    
+    sbg_nextWrite[writeBank % bankgroupNum] = MAX( sbg_nextWrite[writeBank % bankgroupNum],
+                    GetEventQueue()->GetCurrentCycle()
+                        + MAX(p->tBURST, p->tCCD_L));
+
+    dbg_nextRead = MAX( dbg_nextRead, 
                     GetEventQueue()->GetCurrentCycle() 
-                    + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+                    + MAX( p->tBURST, p->tCCD_S ) * (request->burstCount - 1)
                     + p->tCWD + p->tBURST + p->tWTR );
 
-    nextWrite = MAX( nextWrite, 
+    dbg_nextWrite = MAX( dbg_nextWrite, 
                      GetEventQueue()->GetCurrentCycle() 
-                     + MAX( p->tBURST, p->tCCD ) * request->burstCount );
+                     + MAX( p->tBURST, p->tCCD_S ) * request->burstCount );
+
 
     /* if it has implicit precharge, insert the precharge to close the rank */ 
     if( request->type == WRITE_PRECHARGE )
@@ -388,7 +418,7 @@ bool StandardRank::Write( NVMainRequest *request )
 
         GetEventQueue( )->InsertEvent( EventResponse, this, dupPRE, 
                         GetEventQueue( )->GetCurrentCycle( ) 
-                        + MAX( p->tBURST, p->tCCD ) * (request->burstCount - 1)
+                        + MAX( p->tBURST, p->tCCD_L ) * (request->burstCount - 1)
                         + p->tAL + p->tCWD + p->tBURST + p->tWR );
     }
 
@@ -574,8 +604,10 @@ bool StandardRank::PowerUp( NVMainRequest *request )
  */
 bool StandardRank::Refresh( NVMainRequest *request )
 {
-    assert( nextActivate <= ( GetEventQueue()->GetCurrentCycle() ) );
+    // assert( nextActivate <= ( GetEventQueue()->GetCurrentCycle() ) );
     uint64_t refreshBankGroupHead;
+    uint64_t i;
+
     request->address.GetTranslatedAddress( 
             NULL, NULL, &refreshBankGroupHead, NULL, NULL, NULL );
 
@@ -598,8 +630,16 @@ bool StandardRank::Refresh( NVMainRequest *request )
      * simply treat the REFRESH as an ACTIVATE. For a finer refresh
      * granularity, the nextActivate does not block the other bank groups
      */
-    nextActivate = MAX( nextActivate, GetEventQueue( )->GetCurrentCycle( ) 
-                                        + p->tRRDR );
+
+    for (i=refreshBankGroupHead; i < refreshBankGroupHead + banksPerRefresh; i++)
+    {
+
+        sbg_nextActivate[i % bankgroupNum] = MAX(sbg_nextActivate[i % bankgroupNum], GetEventQueue()->GetCurrentCycle()
+                                                + p->tRRDR_L);
+    }
+
+    dbg_nextActivate = MAX( dbg_nextActivate, GetEventQueue( )->GetCurrentCycle( ) 
+                                        + p->tRRDR_L );
     RAWindex = (RAWindex + 1) % rawNum;
     lastActivate[RAWindex] = GetEventQueue( )->GetCurrentCycle( );
 
@@ -613,9 +653,9 @@ ncycle_t StandardRank::NextIssuable( NVMainRequest *request )
 
     request->address.GetTranslatedAddress( NULL, NULL, &bank, NULL, NULL, NULL );
 
-    if( request->type == ACTIVATE || request->type == REFRESH ) nextCompare = MAX( nextActivate, lastActivate[(RAWindex+1)%rawNum] + p->tRAW );
-    else if( request->type == READ || request->type == READ_PRECHARGE ) nextCompare = nextRead;
-    else if( request->type == WRITE || request->type == WRITE_PRECHARGE ) nextCompare = nextWrite;
+    if( request->type == ACTIVATE || request->type == REFRESH ) nextCompare = MAX( MAX(sbg_nextActivate[bank % bankgroupNum], dbg_nextActivate), lastActivate[(RAWindex+1)%rawNum] + p->tRAW );
+    else if( request->type == READ || request->type == READ_PRECHARGE ) nextCompare = MAX(sbg_nextRead[bank % bankgroupNum], dbg_nextRead);
+    else if( request->type == WRITE || request->type == WRITE_PRECHARGE ) nextCompare = MAX(sbg_nextWrite[bank % bankgroupNum], dbg_nextWrite);
     else if( request->type == PRECHARGE || request->type == PRECHARGE_ALL ) nextCompare = nextPrecharge;
     else assert(false);
         
@@ -633,7 +673,7 @@ bool StandardRank::IsIssuable( NVMainRequest *req, FailReason *reason )
 
     if( req->type == ACTIVATE )
     {
-        if( nextActivate > GetEventQueue( )->GetCurrentCycle( ) 
+        if( MAX(sbg_nextActivate[opBank % bankgroupNum], dbg_nextActivate) > GetEventQueue( )->GetCurrentCycle( ) 
             || ( lastActivate[(RAWindex + 1) % rawNum] + p->tRAW ) 
                 > GetEventQueue()->GetCurrentCycle() )  
         {
@@ -649,18 +689,18 @@ bool StandardRank::IsIssuable( NVMainRequest *req, FailReason *reason )
 
         if( rv == false )
         {
-            if( nextActivate > GetEventQueue( )->GetCurrentCycle( ) )
+            if( MAX(sbg_nextActivate[opBank % bankgroupNum], sbg_nextActivate) > GetEventQueue( )->GetCurrentCycle( ) )
             {
                 actWaits++;
-                actWaitTotal += nextActivate - GetEventQueue( )->GetCurrentCycle( );
+                actWaitTotal += sbg_nextActivate[opBank % bankgroupNum] - GetEventQueue( )->GetCurrentCycle( );
             }
 
-            if( ( lastActivate[RAWindex] + p->tRRDR )
+            if( ( lastActivate[RAWindex] + p->tRRDR_L )
                     > GetEventQueue( )->GetCurrentCycle( ) ) 
             {
                 rrdWaits++;
                 rrdWaitTotal += ( lastActivate[RAWindex] + 
-                        p->tRRDR - (GetEventQueue()->GetCurrentCycle()) );
+                        p->tRRDR_L - (GetEventQueue()->GetCurrentCycle()) );
             }
             if( ( lastActivate[( RAWindex + 1 ) % rawNum] + p->tRAW )
                     > GetEventQueue( )->GetCurrentCycle( ) ) 
@@ -673,7 +713,7 @@ bool StandardRank::IsIssuable( NVMainRequest *req, FailReason *reason )
     }
     else if( req->type == READ || req->type == READ_PRECHARGE )
     {
-        if( nextRead > GetEventQueue( )->GetCurrentCycle( ) )
+        if( MAX(sbg_nextRead[opBank % bankgroupNum], dbg_nextRead) > GetEventQueue( )->GetCurrentCycle( ) )
         {
             rv = false;
 
@@ -687,7 +727,7 @@ bool StandardRank::IsIssuable( NVMainRequest *req, FailReason *reason )
     }
     else if( req->type == WRITE || req->type == WRITE_PRECHARGE )
     {
-        if( nextWrite > GetEventQueue( )->GetCurrentCycle( ) )
+        if( MAX(sbg_nextWrite[opBank % bankgroupNum], dbg_nextWrite) > GetEventQueue( )->GetCurrentCycle( ) )
         {
             rv = false;
 
@@ -731,8 +771,14 @@ bool StandardRank::IsIssuable( NVMainRequest *req, FailReason *reason )
     }
     else if( req->type == REFRESH )
     {
+        ncycle_t maxCycle = 0;
+
+        for (ncounter_t i = 0; i < banksPerRefresh; i++)
+        {
+            maxCycle = MAX(sbg_nextActivate[i % bankgroupNum], maxCycle);
+        }
         /* firstly, check whether REFRESH can be issued to a rank */
-        if( nextActivate > GetEventQueue()->GetCurrentCycle() 
+        if( maxCycle > GetEventQueue()->GetCurrentCycle() 
             || ( lastActivate[( RAWindex + 1 ) % rawNum] + p->tRAW 
                 > GetEventQueue( )->GetCurrentCycle( ) )  )
         {
@@ -830,22 +876,45 @@ bool StandardRank::IssueCommand( NVMainRequest *req )
 void StandardRank::Notify( NVMainRequest *request )
 {
     OpType op = request->type;
+    ncounter_t i;
 
     /* We only care if other ranks are reading/writing (to avoid bus contention) */
     if( op == READ || op == READ_PRECHARGE )
     {
-        nextRead = MAX( nextRead, GetEventQueue()->GetCurrentCycle() 
+        for (i=0; i < bankgroupNum; i++)
+        {
+            sbg_nextRead[i] = MAX(sbg_nextRead[i], GetEventQueue()->GetCurrentCycle()
+                                    + p->tBURST + p->tRTRS );
+            
+            sbg_nextWrite[i] = MAX(sbg_nextWrite[i], GetEventQueue()->GetCurrentCycle()
+                                    + p->tCAS + p->tBURST + p->tRTRS - p->tCWD);
+        }
+
+        dbg_nextRead = MAX( dbg_nextRead, GetEventQueue()->GetCurrentCycle() 
                                     + p->tBURST + p->tRTRS );
 
-        nextWrite = MAX( nextWrite, GetEventQueue()->GetCurrentCycle() 
+        dbg_nextWrite = MAX( dbg_nextWrite, GetEventQueue()->GetCurrentCycle() 
                                     + p->tCAS + p->tBURST + p->tRTRS - p->tCWD);
     }
     else if( op == WRITE || op == WRITE_PRECHARGE )
     {
-        nextWrite = MAX( nextWrite, GetEventQueue()->GetCurrentCycle() 
+
+        for(i=0; i < bankgroupNum; i++)
+        {
+            sbg_nextWrite[i] = MAX(sbg_nextWrite[i], GetEventQueue()->GetCurrentCycle()
+                                    + p->tBURST + p->tOST);
+        }
+
+        dbg_nextWrite = MAX( dbg_nextWrite, GetEventQueue()->GetCurrentCycle() 
                                     + p->tBURST + p->tOST );
 
-        nextRead = MAX( nextRead, GetEventQueue()->GetCurrentCycle()
+
+        for (i = 0; i < bankgroupNum; i++)
+        {
+            sbg_nextRead[i] = MAX(sbg_nextRead[i], GetEventQueue()->GetCurrentCycle()
+                                    + p->tBURST + p->tCWD + p->tRTRS - p->tCAS);
+        }
+        dbg_nextRead = MAX( dbg_nextRead, GetEventQueue()->GetCurrentCycle()
                                     + p->tBURST + p->tCWD + p->tRTRS - p->tCAS );
     }
 }
