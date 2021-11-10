@@ -47,10 +47,13 @@
 
 
 #include <fstream>
+#include <iomanip>
 #include <ostream>
+#include <cmath>
 
 #include "NVM/nvmain.h"
 #include "base/callback.hh"
+#include "base/trace.hh"
 #include "include/NVMTypes.h"
 #include "include/NVMainRequest.h"
 #include "mem/abstract_mem.hh"
@@ -58,6 +61,7 @@
 #include "params/NVMainMemory.hh"
 #include "sim/eventq.hh"
 #include "sim/serialize.hh"
+#include "sim/sim_object.hh"
 #include "src/Config.h"
 #include "src/EventQueue.h"
 #include "src/NVMObject.h"
@@ -68,7 +72,7 @@ class NVMainMemory : public AbstractMemory, public NVM::NVMObject
 {
   private:
 
-    class MemoryPort : public SlavePort
+    class MemoryPort : public ResponsePort
     {
         friend class NVMainMemory;
 
@@ -104,7 +108,7 @@ class NVMainMemory : public AbstractMemory, public NVM::NVMObject
     void ScheduleClockEvent( Tick );
     void SetRequestData(NVM::NVMainRequest *request, PacketPtr pkt);
 
-    class NVMainStatPrinter : public Callback
+    class NVMainStatPrinter
     {
         friend class NVMainMemory;
 
@@ -118,7 +122,7 @@ class NVMainMemory : public AbstractMemory, public NVM::NVMObject
         std::ofstream statStream;
     };
 
-    class NVMainStatReseter : public Callback
+    class NVMainStatReseter
     {
       public:
         void process();
@@ -164,13 +168,14 @@ class NVMainMemory : public AbstractMemory, public NVM::NVMObject
     NVMainStatPrinter statPrinter;
     NVMainStatReseter statReseter;
     Tick lastWakeup;
+    Tick startWakeup;
 
     uint64_t m_requests_outstanding;
 
   public:
 
-    typedef NVMainMemoryParams Params;
-    NVMainMemory(const Params *p);
+    PARAMS(NVMainMemory)
+    NVMainMemory(const Params &p);
     virtual ~NVMainMemory();
 
     Port& getPort(const std::string& if_name,
@@ -179,12 +184,7 @@ class NVMainMemory : public AbstractMemory, public NVM::NVMObject
     void startup();
     void wakeup();
 
-    const Params *
-    params() const
-    {
-        return dynamic_cast<const Params *>(_params);
-    }
-
+    void printer();
 
     bool RequestComplete( NVM::NVMainRequest *req );
 
@@ -199,7 +199,7 @@ class NVMainMemory : public AbstractMemory, public NVM::NVMObject
     static NVMainMemory *masterInstance;
     NVMainMemory *otherInstance;
     std::vector<NVMainMemory *> allInstances;
-    bool retryRead, retryWrite, retryResp;
+    bool retryRead, retryWrite, retryResp, sync, retryflag;
     std::deque<PacketPtr> responseQueue;
     std::vector<PacketPtr> pendingDelete;
     std::map<NVM::NVMainRequest *, NVMainMemoryRequest *> m_request_map;

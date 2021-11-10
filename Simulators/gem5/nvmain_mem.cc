@@ -62,11 +62,11 @@ using namespace NVM;
 // contiguous region.
 NVMainMemory *NVMainMemory::masterInstance = NULL;
 
-NVMainMemory::NVMainMemory(const Params *p)
+NVMainMemory::NVMainMemory(const Params &p)
     : AbstractMemory(p), clockEvent(this), respondEvent(this),
-      drainManager(NULL), lat(p->atomic_latency),
-      lat_var(p->atomic_variance), nvmain_atomic(p->atomic_mode),
-      NVMainWarmUp(p->NVMainWarmUp), port(name() + ".port", *this)
+      drainManager(NULL), lat(p.atomic_latency),
+      lat_var(p.atomic_variance), nvmain_atomic(p.atomic_mode),
+      NVMainWarmUp(p.NVMainWarmUp), port(name() + ".port", *this)
 {
     char *cfgparams;
     char *cfgvalues;
@@ -79,7 +79,7 @@ NVMainMemory::NVMainMemory(const Params *p)
     m_nvmainPtr = NULL;
     m_nacked_requests = false;
 
-    m_nvmainConfigPath = p->config;
+    m_nvmainConfigPath = p.config;
 
     m_nvmainConfig = new Config( );
 
@@ -94,6 +94,8 @@ NVMainMemory::NVMainMemory(const Params *p)
     retryRead = false;
     retryWrite = false;
     retryResp = false;
+    sync = false;
+    retryflag = false;
     m_requests_outstanding = 0;
 
     /*
@@ -104,8 +106,8 @@ NVMainMemory::NVMainMemory(const Params *p)
      *    configparams = tRCD,tCAS,tRP
      *    configvalues = 8,8,8
      */
-    cfgparams = (char *)p->configparams.c_str();
-    cfgvalues = (char *)p->configvalues.c_str();
+    cfgparams = (char *)p.configparams.c_str();
+    cfgvalues = (char *)p.configvalues.c_str();
 
     for( cparam = strtok_r( cfgparams, ",", &saveptr1 ), cvalue = strtok_r( cfgvalues, ",", &saveptr2 )
            ; (cparam && cvalue) ; cparam = strtok_r( NULL, ",", &saveptr1 ), cvalue = strtok_r( NULL, ",", &saveptr2) )
@@ -119,6 +121,7 @@ NVMainMemory::NVMainMemory(const Params *p)
    RATE = m_nvmainConfig->GetValue( "RATE" );
 
    lastWakeup = curTick();
+   startWakeup = curTick();
 }
 
 
@@ -163,8 +166,8 @@ NVMainMemory::init()
         statPrinter.forgdb = this;
 
         //registerExitCallback( &statPrinter );
-        ::Stats::registerDumpCallback( &statPrinter );
-        ::Stats::registerResetCallback( &statReseter );
+        ::Stats::registerDumpCallback([this]() { statPrinter.process(); });
+        ::Stats::registerResetCallback([this]() { statReseter.process(); });
 
         SetEventQueue( m_nvmainEventQueue );
         SetStats( m_statsPtr );
@@ -173,6 +176,7 @@ NVMainMemory::init()
         m_nvmainGlobalEventQueue->SetFrequency( m_nvmainConfig->GetEnergy( "CPUFreq" ) * 1000000.0 );
         SetGlobalEventQueue( m_nvmainGlobalEventQueue );
 
+        clock = static_cast<Tick>(round(1000000 / m_nvmainConfig->GetEnergy("CPUFreq")));
         // TODO: Confirm global event queue frequency is the same as this SimObject's clock.
 
         /*  Add any specified hooks */
@@ -227,6 +231,7 @@ void NVMainMemory::startup()
         schedule(masterInstance->clockEvent, curTick() + clock);
 
     lastWakeup = curTick();
+    startWakeup = curTick();
 }
 
 
@@ -277,7 +282,7 @@ void NVMainMemory::NVMainStatReseter::process()
 
 
 NVMainMemory::MemoryPort::MemoryPort(const std::string& _name, NVMainMemory& _memory)
-    : SlavePort(_name, &_memory), memory(_memory), forgdb(_memory)
+    : ResponsePort(_name, &_memory), memory(_memory), forgdb(_memory)
 {
 
 }
@@ -301,7 +306,9 @@ NVMainMemory::SetRequestData(NVMainRequest *request, PacketPtr pkt)
 
     if (pkt->isRead())
     {
-	const RequestPtr dataReq = std::make_shared<Request>(pkt->getAddr(), pkt->getSize(), 0, Request::funcMasterId);
+        const RequestPtr dataReq = 
+                    std::make_shared<Request>(pkt->getAddr(), pkt->getSize(), 0, 
+                                              Request::funcRequestorId);
         Packet *dataPkt = new Packet(dataReq, MemCmd::ReadReq);
         dataPkt->allocate();
         doFunctionalAccess(dataPkt);
@@ -320,7 +327,9 @@ NVMainMemory::SetRequestData(NVMainRequest *request, PacketPtr pkt)
     }
     else
     {
-	const RequestPtr dataReq = std::make_shared<Request>(pkt->getAddr(), pkt->getSize(), 0, Request::funcMasterId);
+        const RequestPtr dataReq =
+                    std::make_shared<Request>(pkt->getAddr(), pkt->getSize(), 0,
+                                              Request::funcRequestorId);
         Packet *dataPkt = new Packet(dataReq, MemCmd::ReadReq);
         dataPkt->allocate();
         doFunctionalAccess(dataPkt);
@@ -456,6 +465,17 @@ NVMainMemory::MemoryPort::recvTimingReq(PacketPtr pkt)
         return false;
     }
 
+    /*
+    * If the difference between the number of ticks running in the system
+    * and the number of subsystems is within 5 cycles, they are considered to be synchronized.
+    * Otherwise, the clock must be synchronized.
+    */
+    if (memory.sync == false && memory.retryflag == false) {
+        ncycle_t stepCycles = (curTick() - memory.lastWakeup) / memory.clock;
+        memory.masterInstance->m_nvmainGlobalEventQueue->Cycle(stepCycles);
+    }
+    memory.lastWakeup = curTick();
+
     // Bus latency is modeled in NVMain.
     pkt->headerDelay = pkt->payloadDelay = 0;
 
@@ -484,7 +504,7 @@ NVMainMemory::MemoryPort::recvTimingReq(PacketPtr pkt)
      *  ARM regions are 2GB - 4GB followed by 34 GB - 64 GB. Work for up to
      *  34 GB of memory. Further regions from 512 GB - 992 GB.
      */
-    addressFixUp = (masterInstance == &memory) ? 0x80000000 : 0x800000000;
+    addressFixUp = 0x800000000;
 #endif
 
     request->access = UNKNOWN_ACCESS;
@@ -704,6 +724,7 @@ bool NVMainMemory::RequestComplete(NVM::NVMainRequest *req)
         for( auto retryIter = masterInstance->allInstances.begin(); 
              retryIter != masterInstance->allInstances.end(); retryIter++ )
         {
+            (*retryIter)->retryflag = true;
             if( (*retryIter)->retryRead && (isRead || isWrite) )
             {
                 (*retryIter)->retryRead = false;
@@ -714,6 +735,7 @@ bool NVMainMemory::RequestComplete(NVM::NVMainRequest *req)
                 (*retryIter)->retryWrite = false;
                 (*retryIter)->port.sendRetryReq();
             }
+            (*retryIter)->retryflag = false;
         }
 
         DPRINTF(NVMain, "Completed Mem request for 0x%x of type %s\n", req->address.GetPhysicalAddress( ), (isRead ? "READ" : "WRITE"));
@@ -854,6 +876,7 @@ void NVMainMemory::tick( )
     if (masterInstance == this)
     {
         /* Keep NVMain in sync with gem5. */
+        sync = true;
         assert(curTick() >= lastWakeup);
         ncycle_t stepCycles = (curTick() - lastWakeup) / clock;
 
@@ -880,13 +903,6 @@ void NVMainMemory::tick( )
             nextEventCycle = nextEvent;
             ScheduleClockEvent( nextWake );
         }
+        sync = false;
     }
 }
-
-
-NVMainMemory *
-NVMainMemoryParams::create()
-{
-    return new NVMainMemory(this);
-}
-

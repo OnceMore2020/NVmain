@@ -31,13 +31,15 @@ import optparse
 import sys
 
 from m5.params import *
-from AbstractMemory import *
-from ClockDomain import *
+#from AbstractMemory import *
+#from ClockDomain import *
+from m5.objects.AbstractMemory import *
+from m5.objects.ClockDomain import *
 
 class NVMainMemory(AbstractMemory):
     type = 'NVMainMemory'
     cxx_header = 'Simulators/gem5/nvmain_mem.hh'
-    port = SlavePort("Slave ports")
+    port = ResponsePort("This port sends responses and receives requests")
     atomic_mode = Param.Bool(False, "Enable to use NVMain in atomic mode rather than latency/variance")
     atomic_latency = Param.Latency('30ns', "Request latency in atomic mode")
     atomic_variance = Param.Latency('30ns', "Request latency in atomic mode")
