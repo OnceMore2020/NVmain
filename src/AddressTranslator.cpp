@@ -39,6 +39,7 @@
 
 #include "src/AddressTranslator.h"
 #include "include/NVMHelpers.h"
+#include <assert.h>
 
 
 using namespace NVM;

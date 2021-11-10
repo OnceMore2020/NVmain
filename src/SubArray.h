@@ -171,6 +171,7 @@ class SubArray : public NVMObject
     ncounter_t cancelledWrites;
     ncounter_t cancelledWriteTime;
     ncounter_t pausedWrites;
+    ncycle_t decdelay;
 
     ncounter_t actWaits;
     ncounter_t actWaitTotal;

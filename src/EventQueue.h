@@ -115,6 +115,7 @@ class EventQueue
     void Process( );
     void Loop( );
     void Loop( ncycle_t steps );
+    void Loop2( ncycle_t steps );
 
     void SetFrequency( double freq );
     double GetFrequency( );

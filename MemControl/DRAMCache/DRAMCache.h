@@ -56,6 +56,7 @@ class DRAMCache : public MemoryController
     bool IssueCommand( NVMainRequest *req );
     bool IssueFunctional( NVMainRequest *req );
     bool RequestComplete( NVMainRequest *req );
+    vod CalLatency( NVMainRequest *request );
 
     void Cycle( ncycle_t );
 
@@ -68,6 +69,11 @@ class DRAMCache : public MemoryController
     NVMain *mainMemory;
     AbstractDRAMCache **drcChannels;
     ncounter_t numChannels;
+    double cycle_ns;
+    double averageLatency, averageQueueLatency, averageTotalLatency, averageBankLatency;
+    double averageReadhit, averageReadmiss, averageWritehit, averageWritemiss, averagememread, averagedramLatency;
+    uint64_t measuredLatencies,measuredQueueLatencies, measuredTotalLatencies;
+    uint64_t measureReadhit, measureReadmiss, measureWritehit, measureWritemiss, measurememread;
 
     void Retranslate( NVMainRequest *req );
 

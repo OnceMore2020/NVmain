@@ -92,7 +92,7 @@ bool NVMainTraceReader::GetNextAccess( TraceLine *nextAccess )
     std::string fullLine;
 
     /* We will read in a full line and fill in these values */
-    unsigned int cycle = 0;
+    uint64_t cycle = 0;
     OpType operation = READ;
     uint64_t address;
     NVMDataBlock dataBlock;
@@ -135,7 +135,14 @@ bool NVMainTraceReader::GetNextAccess( TraceLine *nextAccess )
         if( field != "" )
         {
             if( fieldId == 0 )
-                cycle = atoi( field.c_str( ) );
+            {
+                std::stringstream fmat;
+
+                fmat << std::dec << field;
+                fmat >> cycle;
+
+                //cycle = atoi( field.c_str( ) );
+            }
             else if( fieldId == 1 )
             {
                 if( field == "R" )

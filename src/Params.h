@@ -166,6 +166,7 @@ class Params
     ncycle_t tXPDLL;
     ncycle_t tXS;
     ncycle_t tXSDLL;
+    ncycle_t decdelay;
 
     ncycle_t tRDPDEN; // interval between Read/ReadA and PowerDown
     ncycle_t tWRPDEN; // interval between Write and PowerDown
