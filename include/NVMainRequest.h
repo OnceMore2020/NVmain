@@ -128,6 +128,7 @@ class NVMainRequest
         arrivalCycle = 0; 
         issueCycle = 0; 
         queueCycle = 0;
+        bankissueCycle = 0;
         completionCycle = 0; 
         isPrefetch = false; 
         programCounter = 0; 
@@ -162,6 +163,7 @@ class NVMainRequest
     ncycle_t queueCycle;           //< When the memory controller accepted (queued) the request
     ncycle_t issueCycle;           //< When the memory controller issued the request to the interconnect (dequeued)
     ncycle_t completionCycle;      //< When the request was sent back to the requestor
+    ncycle_t bankissueCycle;
 
     ncycle_t writeProgress;        //< Number of cycles remaining for write request
     ncycle_t cancellations;        //< Number of times this request was cancelled
@@ -202,6 +204,7 @@ const NVMainRequest& NVMainRequest::operator=( const NVMainRequest& m )
     programCounter = m.programCounter;
     owner = m.owner;
 
+    bankissueCycle = m.bankissueCycle;
     arrivalCycle = m.arrivalCycle;
     queueCycle = m.queueCycle;
     issueCycle = m.issueCycle;
