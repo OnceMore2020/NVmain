@@ -402,7 +402,7 @@ bool StandardRank::Write( NVMainRequest *request )
     dbg_nextRead = MAX( dbg_nextRead, 
                     GetEventQueue()->GetCurrentCycle() 
                     + MAX( p->tBURST, p->tCCD_S ) * (request->burstCount - 1)
-                    + p->tCWD + p->tBURST + p->tWTR );
+                    + p->tCWD + p->tBURST + p->tWTR_S );
 
     dbg_nextWrite = MAX( dbg_nextWrite, 
                      GetEventQueue()->GetCurrentCycle() 
@@ -689,7 +689,7 @@ bool StandardRank::IsIssuable( NVMainRequest *req, FailReason *reason )
 
         if( rv == false )
         {
-            if( MAX(sbg_nextActivate[opBank % bankgroupNum], sbg_nextActivate) > GetEventQueue( )->GetCurrentCycle( ) )
+            if( MAX(sbg_nextActivate[opBank % bankgroupNum], dbg_nextActivate) > GetEventQueue( )->GetCurrentCycle( ) )
             {
                 actWaits++;
                 actWaitTotal += sbg_nextActivate[opBank % bankgroupNum] - GetEventQueue( )->GetCurrentCycle( );

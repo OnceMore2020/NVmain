@@ -244,7 +244,7 @@ bool FRFCFS::RequestComplete( NVMainRequest * request )
                             / static_cast<double>(measuredQueueLatencies+1);
         measuredQueueLatencies += 1;
 
-        averageBankLatency = ((averageBankLatency * static_cast<double)(measuredLatencies))
+        averageBankLatency = ((averageBankLatency * static_cast<double>(measuredLatencies))
                             + static_cast<double>(request->completionCycle)
                             - static_cast<double>(request->bankissueCycle))
                             / static_cast<double>(measuredLatencies + 1);
@@ -253,7 +253,7 @@ bool FRFCFS::RequestComplete( NVMainRequest * request )
             if (measuredQueueLatencies % 500000 == 0)
             {
                 std::cout << "FRFCRS averageLatency " << averageLatency << "  averageBankLatency " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << std::endl;
-                std::cout << "FRFCRSns averageLatency " << averagLatency * cycle_ns << " averageBankLatency " << averageBankLatency * cycle_ns << "  averageQueueLatency  " << averageQueueLatency * cycle_ns << std::endl;
+                std::cout << "FRFCRSns averageLatency " << averageLatency * cycle_ns << " averageBankLatency " << averageBankLatency * cycle_ns << "  averageQueueLatency  " << averageQueueLatency * cycle_ns << std::endl;
             }
         }
 
@@ -320,10 +320,10 @@ void FRFCFS::Cycle( ncycle_t steps )
 
 void FRFCFS::CalculateStats( )
 {
-    std::cout << "FRFCRS averageLatency " << averageLatency << " averageBankLatency " << averageBankLatency << " avrageQueueLatency " << averageQueueLatency << std::endl;
-    std::cout << "FRFCRread averageLatency " << averagereadLatency << " averageBankLatency " << averagereadBankLatency << " averageQueueLatency " << averagereadQueueLatency << " measuredreadLatencis " << measuredreadLatencies << std::endl;
-    std::cout << "FRFCRSns avrageLatency " << averagLatency * cycle_ns << " averageBankLatency " averageBankLatency * cycle_ns << " averageQueueLatency " << averageQueueLatency * cycle_ns << std::endl;
-    std::cout << "FRCRreadns averageLatency " << averagereadLatency * cycle_ns << " averageBankLatency " << averagereadBankLatency * cycle_ns << " averagQueueLatency " << averagereadQueueLatency * cycle_ns << " measuredreadLatencies " << measuredreadLatencies << std::endl;
+    std::cout << "FRFCRS averageLatency " << averageLatency << " averageBankLatency " << averageBankLatency << " averageQueueLatency " << averageQueueLatency << std::endl;
+    std::cout << "FRFCRread averageLatency " << averagereadLatency << " averageBankLatency " << averagereadBankLatency << " averageQueueLatency " << averagereadQueueLatency << " measuredreadLatencies " << measuredreadLatencies << std::endl;
+    std::cout << "FRFCRSns averageLatency " << averageLatency * cycle_ns << " averageBankLatency " << averageBankLatency * cycle_ns << " averageQueueLatency " << averageQueueLatency * cycle_ns << std::endl;
+    std::cout << "FRFCRreadns averageLatency " << averagereadLatency * cycle_ns << " averageBankLatency " << averagereadBankLatency * cycle_ns << " averageQueueLatency " << averagereadQueueLatency * cycle_ns << " measuredreadLatencies " << measuredreadLatencies << std::endl;
     MemoryController::CalculateStats( );
 }
 

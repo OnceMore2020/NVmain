@@ -504,7 +504,7 @@ NVMainMemory::MemoryPort::recvTimingReq(PacketPtr pkt)
      *  ARM regions are 2GB - 4GB followed by 34 GB - 64 GB. Work for up to
      *  34 GB of memory. Further regions from 512 GB - 992 GB.
      */
-    addressFixUp = 0x800000000;
+    addressFixUp = 0x80000000;
 #endif
 
     request->access = UNKNOWN_ACCESS;

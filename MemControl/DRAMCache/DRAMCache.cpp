@@ -262,7 +262,7 @@ void DRAMCache::CalLatency(NVMainRequest *request)
     {
         if (request->drchit_flag)
         {
-            averageWritehit = (( averageWritehit * static_cast<double>(measureWritehit)))
+            averageWritehit = (( averageWritehit * static_cast<double>(measureWritehit))
                                 + static_cast<double>(request->completionCycle)
                                 - static_cast<double>(request->arrivalCycle))
                                 / static_cast<double>(measureWritehit+1);
@@ -270,7 +270,7 @@ void DRAMCache::CalLatency(NVMainRequest *request)
         }
         else
         {
-            averageWritemiss = (( averageWritemiss * static_cast<double>(measureWritemiss)))
+            averageWritemiss = (( averageWritemiss * static_cast<double>(measureWritemiss))
                                 + static_cast<double>(request->completionCycle)
                                 - static_cast<double>(request->arrivalCycle))
                                 / static_cast<double>(measureWritemiss+1);
@@ -282,7 +282,7 @@ void DRAMCache::CalLatency(NVMainRequest *request)
     {
         if (request->memread_flag)
         {
-            averagememread = ((averagememread * static_cast<double>(measurememread)))
+            averagememread = ((averagememread * static_cast<double>(measurememread))
                                 + static_cast<double>(request->memreadendCycle)
                                 - static_cast<double>(request->memreadstartCycle))
                                 / static_cast<double>(measurememread + 1);
@@ -291,7 +291,7 @@ void DRAMCache::CalLatency(NVMainRequest *request)
 
         if (request->drchit_flag)
         {
-            averageReadhit = ((averageReadhit * static_cast<double>(measureReadhit)))
+            averageReadhit = ((averageReadhit * static_cast<double>(measureReadhit))
                                 + static_cast<double>(request->completionCycle)
                                 - static_cast<double>(request->arrivalCycle))
                                 / static_cast<double>(measureReadhit + 1);
@@ -299,7 +299,7 @@ void DRAMCache::CalLatency(NVMainRequest *request)
         }
         else
         {
-            averageReadmiss = ((averageReadmiss * static_cast<double>(measureReadmiss)))
+            averageReadmiss = ((averageReadmiss * static_cast<double>(measureReadmiss))
                                 + static_cast<double>(request->completionCycle)
                                 - static_cast<double>(request->arrivalCycle))
                                 / static_cast<double>(measureReadmiss + 1);
@@ -308,24 +308,24 @@ void DRAMCache::CalLatency(NVMainRequest *request)
         }
     }
 
-    averageLatency = ((averageLatency * static_cast<double>(measuredLatencies)))
+    averageLatency = ((averageLatency * static_cast<double>(measuredLatencies))
                     + static_cast<double>(request->completionCycle)
                     - static_cast<double>(request->issueCycle))
                     / static_cast<double>(measuredLatencies+1);
     measuredLatencies += 1;
 
-    averagedramLatency = ((averagedramLatency * static_cast<double>(measuredQueueLatencies)))
-                        + static_cast<double>(request->memreadendCycle)
+    averagedramLatency = ((averagedramLatency * static_cast<double>(measuredQueueLatencies))
+                        + static_cast<double>(request->memreadstartCycle)
                         - static_cast<double>(request->arrivalCycle))
                         / static_cast<double>(measuredQueueLatencies + 1);
 
-    averageQueueLatency = ((averageQueueLatency * static_cast<double>(measuredQueueLatencies)))
+    averageQueueLatency = ((averageQueueLatency * static_cast<double>(measuredQueueLatencies))
                         + static_cast<double>(request->issueCycle)
                         - static_cast<double>(request->arrivalCycle))
                         / static_cast<double>(measuredQueueLatencies + 1);
     measuredQueueLatencies += 1;
 
-    averageBankLatency = ((averageBankLatency * static_cast<double>(measuredLatencies)))
+    averageBankLatency = ((averageBankLatency * static_cast<double>(measuredLatencies))
                         + static_cast<double>(request->completionCycle)
                         - static_cast<double>(request->bankissueCycle))
                         / static_cast<double>(measuredLatencies + 1);
@@ -333,10 +333,10 @@ void DRAMCache::CalLatency(NVMainRequest *request)
     if (measuredQueueLatencies % 500000 == 0)
     {
         std::cout << "DRAMcache averageLatency " << averageLatency << "  averageBankLatency  " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << " averagememread  " << averagememread << "  averagedramLatency  " << averagedramLatency << std::endl;
-        std::cout << "DRAMcache averageLatency  " << averageLatency * cycle_ns << " averageBankLatency  " << averageBankLatency * cycle_ns << "  averageQueueLatency  " << averageQueueLatency * cycle_ns << "  averagememread  " << averagememread * cycle_ns << "  averagedramLatency  " << averagedramLatency * cycle_ns << std::endl;
+        std::cout << "DRAMcachens averageLatency  " << averageLatency * cycle_ns << " averageBankLatency  " << averageBankLatency * cycle_ns << "  averageQueueLatency  " << averageQueueLatency * cycle_ns << "  averagememread  " << averagememread * cycle_ns << "  averagedramLatency  " << averagedramLatency * cycle_ns << std::endl;
     }
 
-    averageTotalLatency = ((averageTotalLatency * static_cast<double>(measuredTotalLatencies)))
+    averageTotalLatency = ((averageTotalLatency * static_cast<double>(measuredTotalLatencies))
                         + static_cast<double>(request->completionCycle)
                         - static_cast<double>(request->arrivalCycle))
                         / static_cast<double>(measuredTotalLatencies + 1);
@@ -412,7 +412,7 @@ void DRAMCache::CalculateStats( )
     std::cout << " total DRAMcache latency writehit " << averageWritehit << "  writemiss " << averageWritemiss << " readhit " << averageReadhit << "  readmiss  " << averageReadmiss << std::endl;
     std::cout << "DRAMcache averageLatency " << averageLatency << "  averageBankLatency  " << averageBankLatency << "  averageQueueLatency  " << averageQueueLatency << "  averagememread  " << averagememread << "  averagedramLatency  " << averagedramLatency << "  measureread  " << measurememread << std::endl
     std::cout << " nstotal DRAMcache latency writehit  " << averageWritehit * cycle_ns << "  writemiss " << averageWritemiss * cycle_ns << "  readhit  " << averageReadhit * cycle_ns << " readmiss " << averageReadmiss * cycle_ns << std::endl;
-    std::cout << "DRAMcachens averagLatency " << averageLatency * cycle_ns << "  averageBankLatency" << averageBankLatency * cycle_ns << "  averageQueueLatency  " << averageQueueLatency * cycle_ns << " averagememread  " << averagememread * cycle_ns << "  averagedramLatency  " << averagedramLatency * cycle_ns << " measureread  " << measurememread << std::endl;
+    std::cout << "DRAMcachens averageLatency " << averageLatency * cycle_ns << "  averageBankLatency" << averageBankLatency * cycle_ns << "  averageQueueLatency  " << averageQueueLatency * cycle_ns << " averagememread  " << averagememread * cycle_ns << "  averagedramLatency  " << averagedramLatency * cycle_ns << " measureread  " << measurememread << std::endl;
 
     for( i = 0; i < numChannels; i++ )
     {

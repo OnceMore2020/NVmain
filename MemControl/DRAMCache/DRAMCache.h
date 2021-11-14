@@ -56,7 +56,7 @@ class DRAMCache : public MemoryController
     bool IssueCommand( NVMainRequest *req );
     bool IssueFunctional( NVMainRequest *req );
     bool RequestComplete( NVMainRequest *req );
-    vod CalLatency( NVMainRequest *request );
+    void CalLatency( NVMainRequest *request );
 
     void Cycle( ncycle_t );
 
